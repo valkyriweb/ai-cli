@@ -54,6 +54,7 @@ if [ ! -f "$release/SOURCE_REVISION" ]; then
   cp -R /opt/ai-cli/dist/. "$stage/dist/"
   cp -R /opt/ai-cli/skill/. "$stage/skill/"
   cp /opt/ai-cli/LICENSE "$stage/LICENSE"
+  cp /opt/ai-cli/package.json "$stage/package.json"
   cp /opt/ai-cli/SOURCE_REVISION "$stage/SOURCE_REVISION"
   cp /opt/ai-cli/VERSION "$stage/VERSION"
   chmod -R a-w "$stage"

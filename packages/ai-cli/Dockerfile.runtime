@@ -14,7 +14,7 @@ LABEL org.opencontainers.image.source="https://github.com/valkyriweb/ai-cli" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN test -n "$SOURCE_REVISION" && mkdir -p /opt/ai-cli/dist /opt/ai-cli/skill
 COPY --from=build /src/packages/ai-cli/dist/ /opt/ai-cli/dist/
-COPY packages/ai-cli/LICENSE /opt/ai-cli/LICENSE
+COPY packages/ai-cli/LICENSE packages/ai-cli/package.json /opt/ai-cli/
 COPY skills/ai-cli/ /opt/ai-cli/skill/
 COPY packages/ai-cli/scripts/seed-runtime.sh /usr/local/bin/seed-ai-cli
 RUN printf '%s\n' "$SOURCE_REVISION" > /opt/ai-cli/SOURCE_REVISION \
