@@ -7,11 +7,12 @@ import {
   type ImageReference,
 } from "../lib/image-references.js";
 import { buildJobs, runJobs } from "../lib/jobs.js";
-import { fetchGatewayModels, resolveModels } from "../lib/models.js";
+import { fetchModels, resolveModels } from "../lib/models.js";
 import { parsePositiveInt, parseSize, parseAspectRatio } from "../lib/parse.js";
 import {
   addProviderOptions,
-  assertGatewayProvider,
+  createImageModel,
+  resolveProviderConfig,
   type ProviderOptions,
 } from "../lib/provider.js";
 import { responseIdFromHeaders } from "../lib/response-id.js";
@@ -72,7 +73,7 @@ export function registerImageCommand(program: Command) {
   );
   addTimeoutOption(command, DEFAULT_TIMEOUT_MS).action(
     async (rawPrompt: string | undefined, opts: ImageOptions) => {
-      assertGatewayProvider("image", opts);
+      const providerConfig = resolveProviderConfig(opts);
       const prompt = rawPrompt?.trim() || undefined;
       const stdin = await readStdin();
       const imageReferenceInputs = opts.image ?? [];
@@ -104,8 +105,8 @@ export function registerImageCommand(program: Command) {
         imagePrompt = prompt!;
       }
 
-      const gatewayModels = await fetchGatewayModels();
-      const models = resolveModels("image", opts.model, gatewayModels.image);
+      const availableModels = await fetchModels(providerConfig);
+      const models = resolveModels("image", opts.model, availableModels.image);
       const countPerModel = opts.count
         ? parsePositiveInt(opts.count, "count")
         : 1;
@@ -126,7 +127,7 @@ export function registerImageCommand(program: Command) {
 
       if (
         opts.size &&
-        models.some((m) => gatewayModels.languageImageModelIds.has(m))
+        models.some((m) => availableModels.languageImageModelIds.has(m))
       ) {
         process.stderr.write(
           "Warning: --size is not supported by language image models; use --aspect-ratio instead\n"
@@ -140,7 +141,7 @@ export function registerImageCommand(program: Command) {
         async (modelId) => {
           const abort = AbortSignal.timeout(timeoutMs(opts.timeout));
 
-          if (gatewayModels.languageImageModelIds.has(modelId)) {
+          if (availableModels.languageImageModelIds.has(modelId)) {
             const messageContent: Array<
               | { type: "text"; text: string }
               | { type: "image"; image: ImageReference }
@@ -163,7 +164,7 @@ export function registerImageCommand(program: Command) {
                 });
               }
             }
-            const creator = gatewayModels.all.find(
+            const creator = availableModels.all.find(
               (m) => m.id === modelId
             )?.creator;
             const result = await generateText({
@@ -194,11 +195,14 @@ export function registerImageCommand(program: Command) {
           }
 
           const result = await generateImage({
-            headers: {
-              "http-referer": "https://github.com/vercel-labs/ai-cli",
-              "x-title": "ai-cli",
-            },
-            model: gateway.image(modelId),
+            headers:
+              providerConfig.mode === "gateway"
+                ? {
+                    "http-referer": "https://github.com/vercel-labs/ai-cli",
+                    "x-title": "ai-cli",
+                  }
+                : undefined,
+            model: createImageModel(providerConfig, modelId),
             prompt: imagePrompt,
             abortSignal: abort,
             n: 1,

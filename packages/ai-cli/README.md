@@ -1,6 +1,6 @@
 # ai
 
-A tiny, agent-native CLI for generating images, video, audio and text with dead-simple commands, stdin support and predictable artifact outputs. Uses [Vercel AI SDK](https://sdk.vercel.ai) with AI Gateway by default and explicit OpenAI-compatible Chat Completions or Responses modes for text generation.
+A tiny, agent-native CLI for generating images, video, audio and text with dead-simple commands, stdin support and predictable artifact outputs. Uses [Vercel AI SDK](https://sdk.vercel.ai) with AI Gateway by default and explicit OpenAI-compatible modes for text and image generation.
 
 ## Install
 
@@ -250,9 +250,9 @@ When the CLI needs to choose a filename, it uses a response id when available an
 
 The `-m` flag always takes priority over `AI_CLI_*_MODEL` env vars. The `-o` flag always takes priority over `AI_CLI_OUTPUT_DIR`. Provider flags override their `AI_CLI_*` equivalents.
 
-### Custom text providers
+### Custom OpenAI-compatible providers
 
-Opt in explicitly. Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Key indirection keeps credentials out of command history:
+Opt in explicitly. Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Both modes route images through the configured provider's `/images/generations` and `/images/edits` endpoints. Key indirection keeps credentials out of command history:
 
 ```bash
 export MY_ROUTER_KEY="..."
@@ -261,9 +261,16 @@ ai text "return hello" \
   --base-url https://router.example/v1 \
   --api-key-env MY_ROUTER_KEY \
   --model my-text-model
+
+ai image "a navy square on white" \
+  --provider openai-responses \
+  --base-url https://router.example/v1 \
+  --api-key-env MY_ROUTER_KEY \
+  --model openai/gpt-image-2 \
+  --output result.png
 ```
 
-`--models-url` overrides model discovery. Image, video, speech, and transcription fail closed in custom modes; they never fall back to AI Gateway. Non-empty `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID` are forwarded through fixed attribution headers.
+`--models-url` overrides model discovery, including providers such as ClawRouter that advertise `image.generate` and `image.edit` capabilities. Video, speech, and transcription remain unsupported in custom modes and fail closed; they never fall back to AI Gateway. Non-empty `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID` are forwarded through fixed attribution headers.
 
 ### Timeouts
 

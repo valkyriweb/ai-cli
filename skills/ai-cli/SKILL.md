@@ -11,8 +11,9 @@ Use `ai` for bounded model generation from the terminal. Treat it as a proposal 
 
 - Agent Skill drafting or evaluation → read `references/writing-agent-skills.md`.
 - Text → `ai text`.
-- Image/video/speech/transcription → use the matching command only with AI Gateway. Custom text modes intentionally reject these modalities.
-- Discovery → `ai models`; custom modes read the configured models endpoint and report failures instead of contacting AI Gateway.
+- Image generation or reference-image editing → `ai image`; OpenAI-compatible modes use the configured `/images/generations` or `/images/edits` endpoint.
+- Video/speech/transcription → use the matching command only with AI Gateway. Custom modes intentionally reject these modalities.
+- Discovery → `ai models`; custom modes read the configured models endpoint, classify advertised image capabilities, and report failures instead of contacting AI Gateway.
 
 ## Safe setup
 
@@ -30,7 +31,9 @@ export AI_CLI_PROVIDER=openai-compatible
 export AI_CLI_BASE_URL="${OPENAI_COMPATIBLE_BASE_URL:?}/v1"
 export AI_CLI_API_KEY_ENV=OPENAI_COMPATIBLE_API_KEY
 export AI_CLI_TEXT_MODEL="${AI_CLI_TEXT_MODEL:?set a text model}"
+export AI_CLI_IMAGE_MODEL="${AI_CLI_IMAGE_MODEL:-openai/gpt-image-2}"
 ai models --type text --json
+ai models --type image --json
 ```
 
 Do not continue if any required custom-provider setting is absent; an Agent Skill workflow must not fall back to Gateway. `--provider`, `--base-url`, `--api-key-env`, and `--models-url` override the equivalent environment variables for one command.

@@ -73,7 +73,7 @@ export AI_CLI_SPEECH_MODEL="openai/tts-1"
 export AI_CLI_OUTPUT_DIR="$HOME/ai-output"
 ```
 
-## Custom text provider
+## Custom OpenAI-compatible provider
 
 ```bash
 export CUSTOM_ROUTER_KEY="..."
@@ -81,8 +81,11 @@ export AI_CLI_PROVIDER=openai-compatible
 export AI_CLI_BASE_URL=https://router.example/v1
 export AI_CLI_API_KEY_ENV=CUSTOM_ROUTER_KEY
 export AI_CLI_TEXT_MODEL=my-text-model
+export AI_CLI_IMAGE_MODEL=openai/gpt-image-2
 ai models --type text --json
+ai models --type image --json
 ai text "return hello"
+ai image "a navy square on white" -o result.png
 ```
 
-Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Custom modes support text only. Image, video, speech, and transcription commands fail instead of falling back to AI Gateway. `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID`, when present, are forwarded through fixed attribution headers.
+Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Both modes send image generation and reference-image edits to the configured provider's OpenAI-compatible image endpoints. Providers such as ClawRouter advertise image capabilities from `/models`. Video, speech, and transcription commands remain unsupported in custom modes and fail instead of falling back to AI Gateway. `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID`, when present, are forwarded through fixed attribution headers.

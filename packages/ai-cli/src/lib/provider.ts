@@ -1,6 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { gateway, type LanguageModel } from "ai";
+import { gateway, type ImageModel, type LanguageModel } from "ai";
 
 import type { Command } from "./command.js";
 import { registerSensitiveValue } from "./redaction.js";
@@ -109,15 +109,27 @@ export function resolveProviderConfig(
 }
 
 export function assertGatewayProvider(
-  modality: "image" | "video" | "speech" | "transcription",
+  modality: "video" | "speech" | "transcription",
   options: ProviderOptions = {},
   env: NodeJS.ProcessEnv = process.env
 ): void {
   if (selectedProviderMode(options, env) !== "gateway") {
     throw new Error(
-      `${modality} is not supported by custom text providers; use --provider gateway explicitly if you intend to use AI Gateway`
+      `${modality} is not supported by custom providers; use --provider gateway explicitly if you intend to use AI Gateway`
     );
   }
+}
+
+export function createImageModel(
+  config: ProviderConfig,
+  modelId: string
+): ImageModel {
+  if (config.mode === "gateway") return gateway.image(modelId);
+  return createOpenAI({
+    baseURL: config.baseUrl,
+    apiKey: config.apiKey,
+    headers: config.headers,
+  }).image(modelId);
 }
 
 export function createTextModel(
