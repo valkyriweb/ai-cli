@@ -7,6 +7,7 @@ import { registerModelsCommand } from "./commands/models.js";
 import { registerTextCommand } from "./commands/text.js";
 import { registerVideoCommand } from "./commands/video.js";
 import { CliUsageError, Command } from "./lib/command.js";
+import { safeErrorMessage } from "./lib/redaction.js";
 
 const program = new Command();
 
@@ -28,7 +29,6 @@ program.parseAsync(process.argv).catch((err: unknown) => {
     if (err.message) process.stderr.write(`error: ${err.message}\n`);
     process.exit(1);
   }
-  const msg = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`Error: ${msg}\n`);
+  process.stderr.write(`Error: ${safeErrorMessage(err)}\n`);
   process.exit(1);
 });

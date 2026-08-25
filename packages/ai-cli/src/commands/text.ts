@@ -1,6 +1,6 @@
 import {
   generateText,
-  gateway,
+  streamText,
   type ImagePart,
   type ModelMessage,
   type TextPart,
@@ -14,16 +14,22 @@ import {
   type ImageReference,
 } from "../lib/image-references.js";
 import { buildJobs, runJobs } from "../lib/jobs.js";
-import { fetchGatewayModels, resolveModels } from "../lib/models.js";
+import { fetchModels, resolveModels } from "../lib/models.js";
 import type { OutputFormat } from "../lib/output.js";
 import { parsePositiveInt, parseTemperature } from "../lib/parse.js";
+import {
+  addProviderOptions,
+  createTextModel,
+  type ProviderOptions,
+  resolveProviderConfig,
+} from "../lib/provider.js";
 import { readStdin, stdinAsText } from "../lib/stdin.js";
 import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
 
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-interface TextOptions {
+interface TextOptions extends ProviderOptions {
   model?: string;
   output?: string;
   format?: string;
@@ -47,32 +53,34 @@ function resolveFormat(fmt?: string): OutputFormat {
 }
 
 export function registerTextCommand(program: Command) {
-  const command = program
-    .command("text")
-    .description("Generate text from a prompt")
-    .argument("[prompt]", "The prompt to generate text from")
-    .option(
-      "-m, --model <model>",
-      "Model ID (creator/model-name), comma-separated for multi-model"
-    )
-    .option("-o, --output <path>", "Output file path or directory")
-    .option("-f, --format <fmt>", "Output format: md, txt (default: md)")
-    .option(
-      "-i, --image <path-or-url>",
-      "Image input path or URL for vision (repeatable)",
-      collectImageReference,
-      []
-    )
-    .option("-n, --count <n>", "Number of generations (default: 1)")
-    .option(
-      "-p, --concurrency <n>",
-      `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
-    )
-    .option("-s, --system <prompt>", "System prompt")
-    .option("--max-tokens <n>", "Maximum tokens to generate")
-    .option("-t, --temperature <n>", "Temperature (0-2)")
-    .option("-q, --quiet", "Suppress progress output")
-    .option("--json", "Output metadata as JSON");
+  const command = addProviderOptions(
+    program
+      .command("text")
+      .description("Generate text from a prompt")
+      .argument("[prompt]", "The prompt to generate text from")
+      .option(
+        "-m, --model <model>",
+        "Model ID (creator/model-name), comma-separated for multi-model"
+      )
+      .option("-o, --output <path>", "Output file path or directory")
+      .option("-f, --format <fmt>", "Output format: md, txt (default: md)")
+      .option(
+        "-i, --image <path-or-url>",
+        "Image input path or URL for vision (repeatable)",
+        collectImageReference,
+        []
+      )
+      .option("-n, --count <n>", "Number of generations (default: 1)")
+      .option(
+        "-p, --concurrency <n>",
+        `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
+      )
+      .option("-s, --system <prompt>", "System prompt")
+      .option("--max-tokens <n>", "Maximum tokens to generate")
+      .option("-t, --temperature <n>", "Temperature (0-2)")
+      .option("-q, --quiet", "Suppress progress output")
+      .option("--json", "Output metadata as JSON")
+  );
   addTimeoutOption(command, DEFAULT_TIMEOUT_MS).action(
     async (rawPrompt: string | undefined, opts: TextOptions) => {
       const prompt = rawPrompt?.trim() || undefined;
@@ -104,8 +112,18 @@ export function registerTextCommand(program: Command) {
       const textPrompt = buildTextPrompt({ prompt, stdinText, images });
 
       const format = resolveFormat(opts.format);
-      const gatewayModels = await fetchGatewayModels();
-      const models = resolveModels("text", opts.model, gatewayModels.text);
+      const provider = resolveProviderConfig(opts);
+      let availableModels;
+      try {
+        availableModels = await fetchModels(provider);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(
+          `Warning: ${message}; using the configured model ID\n`
+        );
+        availableModels = { text: [] };
+      }
+      const models = resolveModels("text", opts.model, availableModels.text);
       const countPerModel = opts.count
         ? parsePositiveInt(opts.count, "count")
         : 1;
@@ -122,18 +140,27 @@ export function registerTextCommand(program: Command) {
         jobs,
         async (modelId) => {
           const abort = AbortSignal.timeout(timeoutMs(opts.timeout));
-          const result = await generateText({
+          const request = {
             headers: {
               "http-referer": "https://github.com/vercel-labs/ai-cli",
               "x-title": "ai-cli",
             },
-            model: gateway(modelId),
+            model: createTextModel(provider, modelId),
             prompt: textPrompt,
             system: opts.system,
             maxOutputTokens: maxTokens,
             temperature,
             abortSignal: abort,
-          });
+          };
+          if (provider.mode === "openai-responses") {
+            const result = streamText(request);
+            const [text, response] = await Promise.all([
+              result.text,
+              result.response,
+            ]);
+            return { data: text, id: response.id };
+          }
+          const result = await generateText(request);
           return { data: result.text, id: result.response.id };
         },
         {

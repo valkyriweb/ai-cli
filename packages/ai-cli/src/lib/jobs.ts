@@ -7,6 +7,7 @@ import type { OutputFormat } from "./output.js";
 import { writeOutput } from "./output.js";
 import { pMap } from "./p-map.js";
 import { Progress, MultiProgress, formatElapsed } from "./progress.js";
+import { safeErrorMessage } from "./redaction.js";
 
 export interface Job {
   modelId: string;
@@ -212,7 +213,7 @@ export async function runJobs(
         }
       } catch (err: unknown) {
         const genElapsed = Date.now() - genStart;
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = safeErrorMessage(err);
         multi.completeLine(
           lineIdxs[i],
           `${noun[0].toUpperCase()}${noun.slice(1)} ${job.label} failed: ${msg} (${formatElapsed(genElapsed)})`

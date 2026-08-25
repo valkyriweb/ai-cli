@@ -12,6 +12,11 @@ import { buildJobs, runJobs } from "../lib/jobs.js";
 import { fetchGatewayModels, resolveModels } from "../lib/models.js";
 import type { OutputFormat } from "../lib/output.js";
 import { parseNonNegativeFloat, parsePositiveInt } from "../lib/parse.js";
+import {
+  addProviderOptions,
+  assertGatewayProvider,
+  type ProviderOptions,
+} from "../lib/provider.js";
 import { responseIdFromHeaders } from "../lib/response-id.js";
 import { readStdin, stdinAsText } from "../lib/stdin.js";
 import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
@@ -28,7 +33,7 @@ const KNOWN_AUDIO_FORMATS = new Set([
   "pcm",
 ]);
 
-interface SpeakOptions {
+interface SpeakOptions extends ProviderOptions {
   model?: string;
   output?: string;
   format?: string;
@@ -45,7 +50,7 @@ interface SpeakOptions {
   timeout: number;
 }
 
-interface TranscribeOptions {
+interface TranscribeOptions extends ProviderOptions {
   model?: string;
   output?: string;
   format?: string;
@@ -61,31 +66,34 @@ export function registerAudioCommand(program: Command) {
     .command("audio")
     .description("Generate speech or transcribe audio");
 
-  const speak = audio
-    .command("speak")
-    .description("Generate speech audio from text")
-    .argument("[text]", "Text to convert to speech")
-    .option(
-      "-m, --model <model>",
-      "Speech model ID (creator/model-name), comma-separated for multi-model"
-    )
-    .option("-o, --output <path>", "Output file path or directory")
-    .option("-f, --format <fmt>", "Audio output format (default: mp3)")
-    .option("--voice <voice>", "Voice to use for speech generation")
-    .option("--instructions <text>", "Instructions for speech generation")
-    .option("--speed <n>", "Speech speed")
-    .option("--language <code>", "Language code (e.g. en, fr) or auto")
-    .option("-n, --count <n>", "Number of generations per model (default: 1)")
-    .option(
-      "-p, --concurrency <n>",
-      `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
-    )
-    .option("-q, --quiet", "Suppress progress output")
-    .option("--json", "Output metadata as JSON")
-    .option("--no-play", "Disable audio playback after generation")
-    .option("--no-waveform", "Disable accurate terminal waveform preview");
+  const speak = addProviderOptions(
+    audio
+      .command("speak")
+      .description("Generate speech audio from text")
+      .argument("[text]", "Text to convert to speech")
+      .option(
+        "-m, --model <model>",
+        "Speech model ID (creator/model-name), comma-separated for multi-model"
+      )
+      .option("-o, --output <path>", "Output file path or directory")
+      .option("-f, --format <fmt>", "Audio output format (default: mp3)")
+      .option("--voice <voice>", "Voice to use for speech generation")
+      .option("--instructions <text>", "Instructions for speech generation")
+      .option("--speed <n>", "Speech speed")
+      .option("--language <code>", "Language code (e.g. en, fr) or auto")
+      .option("-n, --count <n>", "Number of generations per model (default: 1)")
+      .option(
+        "-p, --concurrency <n>",
+        `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
+      )
+      .option("-q, --quiet", "Suppress progress output")
+      .option("--json", "Output metadata as JSON")
+      .option("--no-play", "Disable audio playback after generation")
+      .option("--no-waveform", "Disable accurate terminal waveform preview")
+  );
   addTimeoutOption(speak, DEFAULT_TIMEOUT_MS).action(
     async (rawText: string | undefined, opts: SpeakOptions) => {
+      assertGatewayProvider("speech", opts);
       const text = rawText?.trim() || undefined;
       const stdin = await readStdin();
       const stdinText = stdin ? stdinAsText(stdin).trim() : undefined;
@@ -155,28 +163,31 @@ export function registerAudioCommand(program: Command) {
     }
   );
 
-  const transcribeCommand = audio
-    .command("transcribe")
-    .description("Transcribe audio to text")
-    .argument("[audio]", "Audio file path or URL")
-    .option(
-      "-m, --model <model>",
-      "Transcription model ID (creator/model-name), comma-separated for multi-model"
-    )
-    .option("-o, --output <path>", "Output file path or directory")
-    .option("-f, --format <fmt>", "Output format: md, txt (default: txt)")
-    .option(
-      "-n, --count <n>",
-      "Number of transcriptions per model (default: 1)"
-    )
-    .option(
-      "-p, --concurrency <n>",
-      `Max parallel transcriptions (default: ${DEFAULT_CONCURRENCY})`
-    )
-    .option("-q, --quiet", "Suppress progress output")
-    .option("--json", "Output metadata as JSON");
+  const transcribeCommand = addProviderOptions(
+    audio
+      .command("transcribe")
+      .description("Transcribe audio to text")
+      .argument("[audio]", "Audio file path or URL")
+      .option(
+        "-m, --model <model>",
+        "Transcription model ID (creator/model-name), comma-separated for multi-model"
+      )
+      .option("-o, --output <path>", "Output file path or directory")
+      .option("-f, --format <fmt>", "Output format: md, txt (default: txt)")
+      .option(
+        "-n, --count <n>",
+        "Number of transcriptions per model (default: 1)"
+      )
+      .option(
+        "-p, --concurrency <n>",
+        `Max parallel transcriptions (default: ${DEFAULT_CONCURRENCY})`
+      )
+      .option("-q, --quiet", "Suppress progress output")
+      .option("--json", "Output metadata as JSON")
+  );
   addTimeoutOption(transcribeCommand, DEFAULT_TIMEOUT_MS).action(
     async (rawAudio: string | undefined, opts: TranscribeOptions) => {
+      assertGatewayProvider("transcription", opts);
       const stdin = await readStdin();
       if (!rawAudio && !stdin) {
         process.stderr.write(

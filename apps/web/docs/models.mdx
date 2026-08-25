@@ -97,7 +97,19 @@ Latency (time to first token) and throughput are p50 over the last hour; uptime 
 
 ## Providers
 
-All models are accessed through [Vercel AI Gateway](https://vercel.com/docs/ai-gateway):
+AI Gateway remains the default and supports every CLI modality. Text generation can instead use an explicitly configured OpenAI-compatible Chat Completions or Responses endpoint:
+
+```bash
+export CUSTOM_ROUTER_KEY="..."
+ai models --provider openai-compatible \
+  --base-url https://router.example/v1 \
+  --api-key-env CUSTOM_ROUTER_KEY \
+  --type text
+```
+
+Use `--provider openai-responses` instead when the endpoint implements the Responses API. The custom models endpoint returns standard OpenAI model-list metadata, so provider pricing, latency, and endpoint details are unavailable. Custom modes reject image, video, speech, and transcription rather than falling back to Gateway.
+
+AI Gateway provides:
 
 <Cards>
   <Card title="OpenAI" description="GPT-5.5, GPT-4.1, GPT Image 2, TTS, Whisper" />
