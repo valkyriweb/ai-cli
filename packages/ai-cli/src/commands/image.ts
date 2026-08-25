@@ -9,6 +9,11 @@ import {
 import { buildJobs, runJobs } from "../lib/jobs.js";
 import { fetchGatewayModels, resolveModels } from "../lib/models.js";
 import { parsePositiveInt, parseSize, parseAspectRatio } from "../lib/parse.js";
+import {
+  addProviderOptions,
+  assertGatewayProvider,
+  type ProviderOptions,
+} from "../lib/provider.js";
 import { responseIdFromHeaders } from "../lib/response-id.js";
 import { readStdin } from "../lib/stdin.js";
 import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
@@ -16,7 +21,7 @@ import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
 const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_TIMEOUT_MS = 300_000;
 
-interface ImageOptions {
+interface ImageOptions extends ProviderOptions {
   model?: string;
   output?: string;
   image?: string[];
@@ -33,38 +38,41 @@ interface ImageOptions {
 }
 
 export function registerImageCommand(program: Command) {
-  const command = program
-    .command("image")
-    .description("Generate an image from a prompt")
-    .argument("[prompt]", "The prompt to generate an image from")
-    .option(
-      "-m, --model <model>",
-      "Model ID (creator/model-name), comma-separated for multi-model"
-    )
-    .option("-o, --output <path>", "Output file path or directory")
-    .option(
-      "-i, --image <path-or-url>",
-      "Reference image path or URL (repeatable)",
-      collectImageReference,
-      []
-    )
-    .option("-n, --count <n>", "Number of images per model (default: 1)")
-    .option("--size <WxH>", "Image size (e.g. 1024x1024)")
-    .option("--aspect-ratio <W:H>", "Aspect ratio (e.g. 16:9)")
-    .option("--quality <level>", "Quality (standard, hd)")
-    .option("--style <style>", "Style (e.g. vivid, natural)")
-    .option("-q, --quiet", "Suppress progress output")
-    .option("--json", "Output metadata as JSON")
-    .option(
-      "--no-preview",
-      "Disable inline image preview in supported terminals"
-    )
-    .option(
-      "-p, --concurrency <n>",
-      `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
-    );
+  const command = addProviderOptions(
+    program
+      .command("image")
+      .description("Generate an image from a prompt")
+      .argument("[prompt]", "The prompt to generate an image from")
+      .option(
+        "-m, --model <model>",
+        "Model ID (creator/model-name), comma-separated for multi-model"
+      )
+      .option("-o, --output <path>", "Output file path or directory")
+      .option(
+        "-i, --image <path-or-url>",
+        "Reference image path or URL (repeatable)",
+        collectImageReference,
+        []
+      )
+      .option("-n, --count <n>", "Number of images per model (default: 1)")
+      .option("--size <WxH>", "Image size (e.g. 1024x1024)")
+      .option("--aspect-ratio <W:H>", "Aspect ratio (e.g. 16:9)")
+      .option("--quality <level>", "Quality (standard, hd)")
+      .option("--style <style>", "Style (e.g. vivid, natural)")
+      .option("-q, --quiet", "Suppress progress output")
+      .option("--json", "Output metadata as JSON")
+      .option(
+        "--no-preview",
+        "Disable inline image preview in supported terminals"
+      )
+      .option(
+        "-p, --concurrency <n>",
+        `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
+      )
+  );
   addTimeoutOption(command, DEFAULT_TIMEOUT_MS).action(
     async (rawPrompt: string | undefined, opts: ImageOptions) => {
+      assertGatewayProvider("image", opts);
       const prompt = rawPrompt?.trim() || undefined;
       const stdin = await readStdin();
       const imageReferenceInputs = opts.image ?? [];

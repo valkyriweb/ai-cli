@@ -1,0 +1,59 @@
+name: Runtime image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Verify
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run typecheck
+          bun run lint
+          bun run format:check
+          bun run test
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/ai-cli/Dockerfile.runtime
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            VERSION=0.4.3
+          tags: ghcr.io/${{ github.repository_owner }}/ai-cli:sha-${{ github.sha }}
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/ai-cli
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

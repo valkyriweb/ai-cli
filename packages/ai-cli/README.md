@@ -1,6 +1,6 @@
 # ai
 
-A tiny, agent-native CLI for generating images, video, audio and text with dead-simple commands, stdin support and predictable artifact outputs. Uses [Vercel AI SDK](https://sdk.vercel.ai) and [AI Gateway](https://vercel.com/docs/ai-gateway) for unified access to hundreds of models.
+A tiny, agent-native CLI for generating images, video, audio and text with dead-simple commands, stdin support and predictable artifact outputs. Uses [Vercel AI SDK](https://sdk.vercel.ai) with AI Gateway by default and explicit OpenAI-compatible Chat Completions or Responses modes for text generation.
 
 ## Install
 
@@ -8,7 +8,7 @@ A tiny, agent-native CLI for generating images, video, audio and text with dead-
 npm install -g ai-cli
 ```
 
-Requires Node.js 22+ and an [AI Gateway](https://vercel.com/docs/ai-gateway) API key or a provider-specific key (e.g. `OPENAI_API_KEY`).
+Requires Node.js 22+ and an [AI Gateway](https://vercel.com/docs/ai-gateway) API key by default. OpenAI-compatible text generation uses an explicitly named key environment variable instead.
 
 ## Usage
 
@@ -176,7 +176,7 @@ cat voice-note.mp3 | ai audio transcribe -o transcript.txt
 --json                   Output as JSON (includes descriptions)
 ```
 
-All model types (text, image, video, speech, transcription) are fetched live from the AI Gateway.
+In the default mode, all model types are fetched live from AI Gateway. In OpenAI-compatible mode, `ai models` reads the configured `/models` endpoint and lists its returned models as text models.
 
 Pass a model ID (or short name) to see its context window, max output, pricing, release date and per-provider latency, throughput and uptime:
 
@@ -233,7 +233,11 @@ When the CLI needs to choose a filename, it uses a response id when available an
 | Variable | Description |
 |---|---|
 | `AI_GATEWAY_API_KEY` | AI Gateway authentication key |
-| `OPENAI_API_KEY` | Provider-specific key (or other provider keys) |
+| `OPENAI_API_KEY` | Provider-specific key used by AI Gateway |
+| `AI_CLI_PROVIDER` | `gateway` (default), `openai-compatible`, or `openai-responses` |
+| `AI_CLI_BASE_URL` | OpenAI-compatible API base URL, including `/v1` |
+| `AI_CLI_API_KEY_ENV` | Name of the environment variable containing the custom API key |
+| `AI_CLI_MODELS_URL` | Optional custom models endpoint; defaults to `<base-url>/models` |
 | `AI_CLI_TEXT_MODEL` | Default text model (overrides `openai/gpt-5.5`) |
 | `AI_CLI_IMAGE_MODEL` | Default image model (overrides `openai/gpt-image-2`) |
 | `AI_CLI_VIDEO_MODEL` | Default video model (overrides `bytedance/seedance-2.0`) |
@@ -244,7 +248,22 @@ When the CLI needs to choose a filename, it uses a response id when available an
 | `NO_COLOR` | Disable ANSI color output |
 | `FORCE_COLOR` | Force color output even when not a TTY |
 
-The `-m` flag always takes priority over `AI_CLI_*_MODEL` env vars. The `-o` flag always takes priority over `AI_CLI_OUTPUT_DIR`.
+The `-m` flag always takes priority over `AI_CLI_*_MODEL` env vars. The `-o` flag always takes priority over `AI_CLI_OUTPUT_DIR`. Provider flags override their `AI_CLI_*` equivalents.
+
+### Custom text providers
+
+Opt in explicitly. Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Key indirection keeps credentials out of command history:
+
+```bash
+export MY_ROUTER_KEY="..."
+ai text "return hello" \
+  --provider openai-compatible \
+  --base-url https://router.example/v1 \
+  --api-key-env MY_ROUTER_KEY \
+  --model my-text-model
+```
+
+`--models-url` overrides model discovery. Image, video, speech, and transcription fail closed in custom modes; they never fall back to AI Gateway. Non-empty `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID` are forwarded through fixed attribution headers.
 
 ### Timeouts
 

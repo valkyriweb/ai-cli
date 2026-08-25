@@ -1,135 +1,59 @@
 ---
 name: ai-cli
-description: Generate text, images, video, and audio from the terminal using AI models.
+description: "Use when the user asks to run, configure, troubleshoot, or pipe the `ai` CLI for text, media, or model listing, or explicitly wants `ai-cli` as a bounded drafting/evaluation aid for an Agent Skill. For ordinary Agent Skill authoring without `ai-cli`, use the installed skill-authoring workflow."
 ---
 
 # ai-cli
 
-Generate text, images, video, and audio from the terminal using AI models.
+Use `ai` for bounded model generation from the terminal. Treat it as a proposal tool: validate its output independently and never let it install, project, or approve artifacts.
 
-## When to Use
+## Route
 
-Use when you need to:
-- Generate images from text prompts or existing images
-- Generate video from text prompts or images
-- Generate text (summaries, explanations, code reviews) from prompts or piped content
-- Generate speech from text or transcribe audio files and streams
-- Compare outputs across multiple models side-by-side
-- Build composable media pipelines by chaining commands via stdin/stdout
+- Agent Skill drafting or evaluation → read `references/writing-agent-skills.md`.
+- Text → `ai text`.
+- Image/video/speech/transcription → use the matching command only with AI Gateway. Custom text modes intentionally reject these modalities.
+- Discovery → `ai models`; custom modes read the configured models endpoint and report failures instead of contacting AI Gateway.
 
-## Prerequisites
+## Safe setup
 
-Requires `AI_GATEWAY_API_KEY` or a provider-specific key (e.g. `OPENAI_API_KEY`) in the environment.
+Check identity before use:
+
+```bash
+type -a ai
+ai --version
+```
+
+AI Gateway remains the upstream default. For a custom endpoint, opt into `openai-compatible` (Chat Completions) or `openai-responses` and use key indirection:
+
+```bash
+export AI_CLI_PROVIDER=openai-compatible
+export AI_CLI_BASE_URL="${OPENAI_COMPATIBLE_BASE_URL:?}/v1"
+export AI_CLI_API_KEY_ENV=OPENAI_COMPATIBLE_API_KEY
+export AI_CLI_TEXT_MODEL="${AI_CLI_TEXT_MODEL:?set a text model}"
+ai models --type text --json
+```
+
+Do not continue if any required custom-provider setting is absent; an Agent Skill workflow must not fall back to Gateway. `--provider`, `--base-url`, `--api-key-env`, and `--models-url` override the equivalent environment variables for one command.
 
 ## Commands
 
 ```bash
-ai text "explain this code"              # generate text
-ai image "a sunset over mountains"       # generate an image
-ai video "a spinning triangle"           # generate a video
-ai audio speak "hello"                   # generate speech
-ai audio transcribe recording.mp3        # transcribe audio
-ai models --type audio                   # list speech and transcription models
+ai text "summarize this" -m provider/model -o result.md --json
+ai image "a sunset" -o result.png --json
+ai video "a spinning triangle" -o result.mp4 --json
+ai audio speak "hello" -o speech.mp3 --json --no-play --no-waveform
+ai audio transcribe recording.mp3 -o transcript.txt --json
+ai models --type text --json
 ```
 
-## Video Resolution
+## Context and output safety
 
-Use `--resolution <WxH>` to request a specific video output resolution. Supported resolutions vary by model.
+- Pass only material named for the task. Do not pipe secrets, private prompts, transcripts, full workspaces, or a skill catalog into a model.
+- Use `-o` and `--json` so stdout contains bounded metadata. Without `-o`, non-TTY media commands can write binary data to stdout.
+- Keep user input unchanged in a separate file; write generated content to a new candidate path.
+- Treat HTTP(S) input URLs as disclosures to the selected provider.
+- Disable media previews in automation with `--no-preview`, `--no-play`, or `--no-waveform`.
 
-```bash
-ai video "a cinematic landscape" --resolution 1920x1080
-```
+## Result
 
-## Key Flags
-
-```
--m, --model <id>       Model ID (provider/name or short name), comma-separated for multi-model
--o, --output <path>    Output file or directory
--n, --count <n>        Number of generations per model
--q, --quiet            Suppress progress output
---json                 Output structured metadata as JSON (paths, timing, success/failure)
---timeout <seconds>    Request timeout in seconds (see Timeouts for per-command defaults)
-```
-
-## Piping Patterns
-
-Chain commands for agent workflows:
-
-```bash
-# Pipe content in for summarization
-cat file.txt | ai text "summarize this"
-git diff | ai text "write a commit message"
-
-# Image-to-video pipeline
-ai image "a dragon" | ai video "animate this"
-
-# Image editing via stdin
-cat photo.png | ai image "make it a watercolor"
-
-# Audio workflows
-echo "Ship the changelog" | ai audio speak -o changelog.mp3
-cat recording.mp3 | ai audio transcribe -o transcript.txt
-```
-
-## Structured Output
-
-Use `--json` to get machine-readable results:
-
-```bash
-ai image "a sunset" --json
-```
-
-Returns:
-```json
-{
-  "elapsed_ms": 3420,
-  "count": 1,
-  "results": [
-    {
-      "index": 1,
-      "model": "openai/gpt-image-2",
-      "elapsed_ms": 3420,
-      "success": true,
-      "file": "/path/to/resp_abc123.png"
-    }
-  ]
-}
-```
-
-## Multi-Model Comparison
-
-```bash
-ai image "a sunset" -m "openai/gpt-image-1,bfl/flux-2-pro,xai/grok-imagine-image"
-```
-
-## Output Behavior
-
-- **Interactive (TTY)**: saves to file, prints path to stderr
-- **Piped (non-TTY)**: writes raw content to stdout for chaining
-- **`-o <dir>`**: saves inside directory with auto-generated names
-
-When the CLI chooses a filename, it uses a response ID when available and falls back to a random 8-character ID, such as `resp_abc123.png` or `7f3a9c1d.mp3`.
-
-**Important for agents**: Always use `-o` to save to a file when generating images, video, or speech audio. Without `-o` in a non-TTY context, raw binary data is written to stdout, which wastes context and is not useful for agents. Use `-o output.png`, `-o speech.mp3`, or an output directory and read the file path from `--json` output instead.
-
-## Timeouts
-
-- text: 120 seconds
-- image: 300 seconds
-- video: 300 seconds
-- audio speak: 120 seconds
-- audio transcribe: 120 seconds
-
-Override with `--timeout <seconds>` when a prompt legitimately needs longer, instead of dropping to a faster model variant that changes the output:
-
-```bash
-ai image "a 72-cell sprite atlas, detailed" --timeout 600
-```
-
-The value is in seconds, not milliseconds, and is capped at 2147483.
-
-## Exit Codes
-
-- `0` — success
-- `1` — all generations failed
-- `2` — partial failure (some succeeded)
+Report the provider mode, model, output path, exit code, and deterministic checks. Never report or echo API keys, authorization headers, or private input.

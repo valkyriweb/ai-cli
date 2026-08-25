@@ -14,6 +14,11 @@ import {
   parseNonNegativeFloat,
   parseSize,
 } from "../lib/parse.js";
+import {
+  addProviderOptions,
+  assertGatewayProvider,
+  type ProviderOptions,
+} from "../lib/provider.js";
 import { responseIdFromHeaders } from "../lib/response-id.js";
 import { readStdin } from "../lib/stdin.js";
 import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
@@ -21,7 +26,7 @@ import { addTimeoutOption, timeoutMs } from "../lib/timeout.js";
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_TIMEOUT_MS = 300_000;
 
-interface VideoOptions {
+interface VideoOptions extends ProviderOptions {
   model?: string;
   output?: string;
   image?: string[];
@@ -37,37 +42,40 @@ interface VideoOptions {
 }
 
 export function registerVideoCommand(program: Command) {
-  const command = program
-    .command("video")
-    .description("Generate a video from a prompt")
-    .argument("[prompt]", "The prompt to generate a video from")
-    .option(
-      "-m, --model <model>",
-      "Model ID (creator/model-name), comma-separated for multi-model"
-    )
-    .option("-o, --output <path>", "Output file path or directory")
-    .option(
-      "-i, --image <path-or-url>",
-      "Image input path or URL",
-      collectImageReference,
-      []
-    )
-    .option("-n, --count <n>", "Number of videos per model (default: 1)")
-    .option("--aspect-ratio <W:H>", "Aspect ratio (e.g. 16:9)")
-    .option("--resolution <WxH>", "Video resolution (e.g. 1920x1080)")
-    .option("--duration <seconds>", "Video duration in seconds")
-    .option("-q, --quiet", "Suppress progress output")
-    .option("--json", "Output metadata as JSON")
-    .option(
-      "--no-preview",
-      "Disable inline video frame preview in supported terminals"
-    )
-    .option(
-      "-p, --concurrency <n>",
-      `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
-    );
+  const command = addProviderOptions(
+    program
+      .command("video")
+      .description("Generate a video from a prompt")
+      .argument("[prompt]", "The prompt to generate a video from")
+      .option(
+        "-m, --model <model>",
+        "Model ID (creator/model-name), comma-separated for multi-model"
+      )
+      .option("-o, --output <path>", "Output file path or directory")
+      .option(
+        "-i, --image <path-or-url>",
+        "Image input path or URL",
+        collectImageReference,
+        []
+      )
+      .option("-n, --count <n>", "Number of videos per model (default: 1)")
+      .option("--aspect-ratio <W:H>", "Aspect ratio (e.g. 16:9)")
+      .option("--resolution <WxH>", "Video resolution (e.g. 1920x1080)")
+      .option("--duration <seconds>", "Video duration in seconds")
+      .option("-q, --quiet", "Suppress progress output")
+      .option("--json", "Output metadata as JSON")
+      .option(
+        "--no-preview",
+        "Disable inline video frame preview in supported terminals"
+      )
+      .option(
+        "-p, --concurrency <n>",
+        `Max parallel generations (default: ${DEFAULT_CONCURRENCY})`
+      )
+  );
   addTimeoutOption(command, DEFAULT_TIMEOUT_MS).action(
     async (rawPrompt: string | undefined, opts: VideoOptions) => {
+      assertGatewayProvider("video", opts);
       const prompt = rawPrompt?.trim() || undefined;
       const stdin = await readStdin();
       const imageReferenceInputs = opts.image ?? [];

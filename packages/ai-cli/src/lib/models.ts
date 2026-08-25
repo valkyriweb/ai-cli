@@ -1,3 +1,9 @@
+import type {
+  OpenAICompatibleProviderConfig,
+  ProviderConfig,
+} from "./provider.js";
+import { providerRequestHeaders } from "./provider.js";
+
 export type Modality = "text" | "image" | "video" | "speech" | "transcription";
 
 const DEFAULTS: Record<Modality, string> = {
@@ -87,6 +93,22 @@ interface RawGatewayModel {
 }
 
 let cached: Promise<GatewayModels> | null = null;
+const compatibleCache = new Map<string, Promise<GatewayModels>>();
+
+export function fetchModels(config: ProviderConfig): Promise<GatewayModels> {
+  if (config.mode === "gateway") return fetchGatewayModels();
+
+  const cacheKey = `${config.modelsUrl}\0${config.apiKeyEnv}`;
+  let request = compatibleCache.get(cacheKey);
+  if (!request) {
+    request = fetchOpenAICompatibleModels(config).catch((error) => {
+      compatibleCache.delete(cacheKey);
+      throw error;
+    });
+    compatibleCache.set(cacheKey, request);
+  }
+  return request;
+}
 
 export function fetchGatewayModels(): Promise<GatewayModels> {
   if (!cached) {
@@ -100,6 +122,51 @@ export function fetchGatewayModels(): Promise<GatewayModels> {
 
 export function resetGatewayCache(): void {
   cached = null;
+  compatibleCache.clear();
+}
+
+async function fetchOpenAICompatibleModels(
+  config: OpenAICompatibleProviderConfig
+): Promise<GatewayModels> {
+  let response: Response;
+  try {
+    response = await fetch(config.modelsUrl, {
+      headers: providerRequestHeaders(config),
+      signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error("could not fetch models from the configured provider");
+  }
+  if (!response.ok) {
+    throw new Error(
+      `could not fetch models from the configured provider (HTTP ${response.status})`
+    );
+  }
+
+  let json: { data?: RawGatewayModel[] };
+  try {
+    json = (await response.json()) as { data?: RawGatewayModel[] };
+  } catch {
+    throw new Error("configured models endpoint returned invalid JSON");
+  }
+
+  const text = (json.data ?? []).map((model) => ({
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    creator: model.owned_by ?? "openai-compatible",
+    capabilities: ["text" as const],
+  }));
+  return {
+    text,
+    image: [],
+    video: [],
+    speech: [],
+    transcription: [],
+    all: text,
+    lookup: text,
+    languageImageModelIds: new Set(),
+  };
 }
 
 async function doFetch(): Promise<GatewayModels> {
