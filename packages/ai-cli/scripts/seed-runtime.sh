@@ -18,6 +18,36 @@ stage="$root/.stage-$revision-$$"
 umask 022
 mkdir -p "$root" "$home/.local/bin"
 
+if [ "${AI_CLI_SEED_ACTION:-install}" = "remove" ]; then
+  remove_link() {
+    target=$1
+    link=$2
+    backup="$link.pre-ai-cli"
+    if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+      rm "$link"
+    fi
+    if [ ! -e "$link" ] && [ ! -L "$link" ] && { [ -e "$backup" ] || [ -L "$backup" ]; }; then
+      mv "$backup" "$link"
+    fi
+  }
+  remove_link "$release/dist/index.js" "$home/.local/bin/ai"
+  for projection in \
+    "$home/.pi/agent/skills/ai-cli" \
+    "$home/.claude/skills/ai-cli" \
+    "$home/.codex/skills/ai-cli"
+  do
+    remove_link "$release/skill" "$projection"
+  done
+  rm -rf "$release"
+  rm -f "$root/.installed"
+  exit 0
+fi
+
+if [ "${AI_CLI_SEED_ACTION:-install}" != "install" ]; then
+  echo "ai-cli seed refused: AI_CLI_SEED_ACTION must be install or remove" >&2
+  exit 1
+fi
+
 if [ ! -f "$release/SOURCE_REVISION" ]; then
   rm -rf "$stage"
   mkdir -p "$stage/dist" "$stage/skill"
