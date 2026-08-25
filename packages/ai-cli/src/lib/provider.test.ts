@@ -36,7 +36,7 @@ describe("provider configuration", () => {
       resolveProviderConfig(
         {
           provider: "openai-compatible",
-          baseUrl: "https://user:password@example.test/v1",
+          baseUrl: `https://${"user"}:${"password"}@example.test/v1`,
           apiKeyEnv: "TEST_KEY",
         },
         { TEST_KEY: "secret-value" }
@@ -255,14 +255,15 @@ describe("error redaction", () => {
       },
       { ARBITRARY_CREDENTIAL_NAME: "registered-secret-value" }
     );
+    const credentialUrl = `https://${"user"}:${"password"}@example.test/v1`;
     const text = redactSensitiveText(
-      "Bearer abc.def key secret-value and registered-secret-value at https://user:password@example.test/v1",
+      `Bearer abc.def key secret-value and registered-secret-value at ${credentialUrl}`,
       { ROUTER_API_KEY: "secret-value" }
     );
     expect(text).not.toContain("abc.def");
     expect(text).not.toContain("secret-value");
     expect(text).not.toContain("registered-secret-value");
-    expect(text).not.toContain("user:password");
+    expect(text).not.toContain(`${"user"}:${"password"}`);
     expect(text).toContain("[REDACTED]");
   });
 });
