@@ -82,8 +82,10 @@ interface RawGatewayModel {
   name?: string;
   description?: string;
   owned_by?: string;
+  display_name?: string;
   type?: string;
   tags?: string[];
+  capabilities?: string[];
   context_window?: number;
   max_tokens?: number;
   released?: number;
@@ -150,23 +152,47 @@ async function fetchOpenAICompatibleModels(
     throw new Error("configured models endpoint returned invalid JSON");
   }
 
-  const text = (json.data ?? []).map((model) => ({
-    id: model.id,
-    name: model.name,
-    description: model.description,
-    creator: model.owned_by ?? "openai-compatible",
-    capabilities: ["text" as const],
-  }));
-  return {
-    text,
+  const result: GatewayModels = {
+    text: [],
     image: [],
     video: [],
     speech: [],
     transcription: [],
-    all: text,
-    lookup: text,
+    all: [],
+    lookup: [],
     languageImageModelIds: new Set(),
   };
+  for (const model of json.data ?? []) {
+    const advertised = model.capabilities ?? [];
+    const capabilities: Modality[] = [];
+    // Generic OpenAI-compatible model lists usually omit capabilities and are
+    // language-only. ClawRouter advertises explicit llm.* and image.* values.
+    if (
+      advertised.length === 0 ||
+      advertised.some((item) => item.startsWith("llm."))
+    ) {
+      capabilities.push("text");
+    }
+    if (
+      advertised.some(
+        (item) => item === "image.generate" || item === "image.edit"
+      )
+    ) {
+      capabilities.push("image");
+    }
+    const entry: ModelEntry = {
+      id: model.id,
+      name: model.name ?? model.display_name,
+      description: model.description,
+      creator: model.owned_by ?? "openai-compatible",
+      capabilities,
+    };
+    result.lookup.push(entry);
+    if (capabilities.includes("text")) result.text.push(entry);
+    if (capabilities.includes("image")) result.image.push(entry);
+    if (capabilities.length > 0) result.all.push(entry);
+  }
+  return result;
 }
 
 async function doFetch(): Promise<GatewayModels> {

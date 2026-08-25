@@ -4,12 +4,12 @@
 
 ### New Features
 
-- **Custom text providers** - `--provider openai-compatible` and `--provider openai-responses` support explicit base URL, API-key environment indirection, optional model discovery, and allowlisted Paperclip attribution headers while preserving AI Gateway as the default
+- **Custom OpenAI-compatible providers** - `--provider openai-compatible` and `--provider openai-responses` support explicit base URL, API-key environment indirection, capability-aware model discovery, text generation, image generation/editing, and allowlisted Paperclip attribution headers while preserving AI Gateway as the default
 - **Video resolution** - `ai video --resolution <WxH>` requests an explicit output resolution such as `1920x1080` from supported video models
 
 ### Security
 
-- **Fail-closed custom mode** - unsupported image, video, speech, and transcription commands never fall back to AI Gateway, and authentication material is redacted from CLI errors
+- **Fail-closed custom mode** - supported image calls stay on the configured provider while unsupported video, speech, and transcription commands never fall back to AI Gateway, and authentication material is redacted from CLI errors
 - **Complete license artifacts** - source and npm package now include the canonical Apache-2.0 license text declared by package metadata
 
 ## 0.4.3

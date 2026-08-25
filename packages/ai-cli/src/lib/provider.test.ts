@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { generateText, streamText } from "ai";
+import { generateImage, generateText, streamText } from "ai";
 
 import { fetchModels, resetGatewayCache } from "./models.js";
 import {
   assertGatewayProvider,
+  createImageModel,
   createTextModel,
   resolveProviderConfig,
   selectedProviderMode,
@@ -73,15 +74,10 @@ describe("provider configuration", () => {
   });
 
   test("fails closed for unsupported modalities", () => {
-    for (const modality of [
-      "image",
-      "video",
-      "speech",
-      "transcription",
-    ] as const) {
+    for (const modality of ["video", "speech", "transcription"] as const) {
       expect(() =>
         assertGatewayProvider(modality, { provider: "openai-compatible" }, {})
-      ).toThrow("not supported by custom text providers");
+      ).toThrow("not supported by custom providers");
     }
   });
 });
@@ -94,7 +90,14 @@ describe("openai-compatible wire path", () => {
       requests.push({ url, headers: new Headers(init?.headers) });
       if (url.endsWith("/models")) {
         return Response.json({
-          data: [{ id: "cheap-text-model", owned_by: "router" }],
+          data: [
+            { id: "cheap-text-model", owned_by: "router" },
+            {
+              id: "openai/gpt-image-2",
+              owned_by: "openai",
+              capabilities: ["image.generate", "image.edit"],
+            },
+          ],
         });
       }
       if (url.endsWith("/chat/completions")) {
@@ -130,6 +133,9 @@ describe("openai-compatible wire path", () => {
     );
     const models = await fetchModels(config);
     expect(models.text.map((model) => model.id)).toEqual(["cheap-text-model"]);
+    expect(models.image.map((model) => model.id)).toEqual([
+      "openai/gpt-image-2",
+    ]);
 
     const result = await generateText({
       model: createTextModel(config, "cheap-text-model"),
@@ -148,6 +154,88 @@ describe("openai-compatible wire path", () => {
       expect(headers.get("x-bridge-agent-id")).toBe("agent-123");
       expect(headers.get("x-bridge-session-id")).toBe("run-456");
     }
+  });
+
+  test("uses the configured OpenAI image endpoint without contacting AI Gateway", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (input, init) => {
+      const url = String(input);
+      requests.push({
+        url,
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return Response.json({
+        created: 1,
+        data: [{ b64_json: "Zm94", revised_prompt: "a fox" }],
+      });
+    }) as typeof fetch;
+
+    const config = resolveProviderConfig(
+      {
+        provider: "openai-responses",
+        baseUrl: "http://router.test/v1",
+        apiKeyEnv: "ROUTER_KEY",
+      },
+      {
+        ROUTER_KEY: "secret-value",
+        PAPERCLIP_AGENT_ID: "agent-123",
+        PAPERCLIP_RUN_ID: "run-456",
+      }
+    );
+    const result = await generateImage({
+      model: createImageModel(config, "openai/gpt-image-2"),
+      prompt: "a fox",
+      size: "1024x1024",
+      providerOptions: { openai: { quality: "high" } },
+    });
+
+    expect(Buffer.from(result.image.uint8Array).toString()).toBe("fox");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://router.test/v1/images/generations");
+    expect(requests[0]?.body).toMatchObject({
+      model: "openai/gpt-image-2",
+      prompt: "a fox",
+      size: "1024x1024",
+      quality: "high",
+    });
+    expect(
+      requests.some(({ url }) => url.includes("ai-gateway.vercel.sh"))
+    ).toBe(false);
+  });
+
+  test("routes reference-image edits to the configured provider", async () => {
+    const requests: Array<{ url: string; body: FormData }> = [];
+    globalThis.fetch = (async (input, init) => {
+      requests.push({ url: String(input), body: init?.body as FormData });
+      return Response.json({ data: [{ b64_json: "ZWRpdGVk" }] });
+    }) as typeof fetch;
+
+    const config = resolveProviderConfig(
+      {
+        provider: "openai-responses",
+        baseUrl: "http://router.test/v1",
+        apiKeyEnv: "ROUTER_KEY",
+      },
+      { ROUTER_KEY: "secret-value" }
+    );
+    const result = await generateImage({
+      model: createImageModel(config, "openai/gpt-image-2"),
+      prompt: {
+        text: "make it neon",
+        images: [new Uint8Array([137, 80, 78, 71])],
+      },
+    });
+
+    expect(Buffer.from(result.image.uint8Array).toString()).toBe("edited");
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://router.test/v1/images/edits");
+    expect(requests[0]?.body).toBeInstanceOf(FormData);
+    expect(requests[0]?.body.get("model")).toBe("openai/gpt-image-2");
+    expect(requests[0]?.body.get("prompt")).toBe("make it neon");
+    expect(requests[0]?.body.getAll("image")).toHaveLength(1);
+    expect(
+      requests.some(({ url }) => url.includes("ai-gateway.vercel.sh"))
+    ).toBe(false);
   });
 
   test("supports the explicit OpenAI Responses wire path", async () => {
