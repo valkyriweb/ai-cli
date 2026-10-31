@@ -21,6 +21,88 @@ async function run(...args: string[]) {
 }
 
 describe("cli integration", () => {
+  test.each([1, 2])(
+    "redacts provider credentials from failed text jobs (count=%i)",
+    async (count) => {
+      const credential = "fixture-only-provider-credential";
+      const requests: Array<{ path: string; authorization: string | null }> =
+        [];
+      const server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          requests.push({
+            path,
+            authorization: request.headers.get("authorization"),
+          });
+          if (path === "/v1/models") {
+            return Response.json({ data: [{ id: "fixture-model" }] });
+          }
+          return Response.json(
+            {
+              error: {
+                message: `Fixture denied ${credential}`,
+                type: "authentication_error",
+              },
+            },
+            { status: 401 }
+          );
+        },
+      });
+      const proc = Bun.spawn(
+        [
+          process.execPath,
+          "run",
+          "src/index.ts",
+          "text",
+          "fixture prompt",
+          "--model",
+          "fixture-model",
+          "--count",
+          String(count),
+        ],
+        {
+          cwd: ROOT,
+          env: {
+            PATH: process.env.PATH ?? "",
+            AI_CLI_PROVIDER: "openai-compatible",
+            AI_CLI_BASE_URL: `http://127.0.0.1:${server.port}/v1`,
+            AI_CLI_API_KEY_ENV: "FIXTURE_CREDENTIAL",
+            FIXTURE_CREDENTIAL: credential,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+          stdin: "ignore",
+        }
+      );
+      const timeout = setTimeout(() => proc.kill(), 10_000);
+      try {
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        expect(exitCode).toBe(1);
+        expect(stdout + stderr).toContain("Fixture denied [REDACTED]");
+        expect(stdout + stderr).not.toContain(credential);
+        expect(requests.map(({ path }) => path)).toEqual([
+          "/v1/models",
+          ...Array.from({ length: count }, () => "/v1/chat/completions"),
+        ]);
+        for (const request of requests) {
+          expect(request.authorization).toBe(`Bearer ${credential}`);
+        }
+      } finally {
+        clearTimeout(timeout);
+        proc.kill();
+        await proc.exited;
+        await server.stop(true);
+      }
+    },
+    20_000
+  );
+
   test("published bin targets built JavaScript", () => {
     expect(pkg.bin.ai).toBe("./dist/index.js");
     expect(pkg.files).toContain("dist");
