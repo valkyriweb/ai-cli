@@ -7,6 +7,14 @@ on:
     branches: [main]
 
 jobs:
+  release-notes:
+    name: Release Notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun test scripts/release-notes.test.mjs
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
