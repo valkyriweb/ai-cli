@@ -23,21 +23,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Compare package.json version to npm and check GitHub release
+      - name: Check exact npm version and GitHub release
         id: check
         run: |
           LOCAL_VERSION=$(node -p "require('./packages/ai-cli/package.json').version")
           echo "Local version: $LOCAL_VERSION"
 
-          NPM_VERSION=$(npm view ai-cli version 2>/dev/null || echo "0.0.0")
-          echo "npm version: $NPM_VERSION"
+          NPM_STATE=$(node scripts/npm-release-state.mjs packages/ai-cli/package.json)
+          echo "Exact npm version state: $NPM_STATE"
 
-          if [ "$LOCAL_VERSION" != "$NPM_VERSION" ]; then
-            echo "Version changed: $NPM_VERSION -> $LOCAL_VERSION"
+          if [ "$NPM_STATE" = "missing" ]; then
+            echo "Version $LOCAL_VERSION is not published on npm"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
             echo "needs_github_release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Version unchanged on npm, skipping publish"
+            echo "Version $LOCAL_VERSION already exists on npm, skipping publish"
             echo "should_release=false" >> "$GITHUB_OUTPUT"
 
             TAG="v$LOCAL_VERSION"
