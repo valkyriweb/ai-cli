@@ -3,8 +3,8 @@
 import { runMcp } from "./commands/mcp.js";
 import { applyStoredKey, authErrorMessage, isAuthError } from "./lib/auth.js";
 import { CliUsageError } from "./lib/command.js";
-import { createProgram } from "./program.js";
 import { redactSensitiveText, safeErrorMessage } from "./lib/redaction.js";
+import { createProgram } from "./program.js";
 
 const program = createProgram();
 

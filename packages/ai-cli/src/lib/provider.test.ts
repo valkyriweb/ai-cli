@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, test } from "vitest";
-
 import { generateImage, generateText, streamText } from "ai";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { fetchModels, resetGatewayCache } from "./models.js";
 import {

@@ -69,35 +69,37 @@ interface VideoOptions extends MediaOptions, ProviderOptions {
 
 function generationCommand(command: Command, start = false) {
   return addTimeoutOption(
-    addProviderOptions(addMediaOptions(
-      command.argument("[prompt]", "Video prompt"),
-      DEFAULT_CONCURRENCY,
-      start
-    )
-      .option(
-        "-i, --image <path-or-url>",
-        "SDK prompt.image (or pipe image bytes)",
-        collectImageReference,
-        []
+    addProviderOptions(
+      addMediaOptions(
+        command.argument("[prompt]", "Video prompt"),
+        DEFAULT_CONCURRENCY,
+        start
       )
-      .option(
-        "--frame-images <path>",
-        "JSON SDK frameImages array with first_frame / last_frame roles"
-      )
-      .option(
-        "--input-references <path>",
-        "JSON SDK inputReferences array; specify mediaType for video URLs"
-      )
-      .option(
-        "--max-videos-per-call <n>",
-        "SDK maxVideosPerCall batching limit"
-      )
-      .option("--aspect-ratio <W:H|adaptive>", "SDK aspectRatio")
-      .option("--resolution <WxH>", "SDK resolution (e.g. 1920x1080)")
-      .option("--duration <seconds>", "SDK duration in seconds")
-      .option("--fps <n>", "SDK frames per second")
-      .option("--generate-audio", "Request generated audio")
-      .option("--no-generate-audio", "Disable generated audio")),
+        .option(
+          "-i, --image <path-or-url>",
+          "SDK prompt.image (or pipe image bytes)",
+          collectImageReference,
+          []
+        )
+        .option(
+          "--frame-images <path>",
+          "JSON SDK frameImages array with first_frame / last_frame roles"
+        )
+        .option(
+          "--input-references <path>",
+          "JSON SDK inputReferences array; specify mediaType for video URLs"
+        )
+        .option(
+          "--max-videos-per-call <n>",
+          "SDK maxVideosPerCall batching limit"
+        )
+        .option("--aspect-ratio <W:H|adaptive>", "SDK aspectRatio")
+        .option("--resolution <WxH>", "SDK resolution (e.g. 1920x1080)")
+        .option("--duration <seconds>", "SDK duration in seconds")
+        .option("--fps <n>", "SDK frames per second")
+        .option("--generate-audio", "Request generated audio")
+        .option("--no-generate-audio", "Disable generated audio")
+    ),
     DEFAULT_TIMEOUT_MS
   );
 }
@@ -361,26 +363,28 @@ export function registerVideoCommand(program: Command) {
       }
     });
 
-  const statusCommand = addProviderOptions(addGatewayOptions(
-    command
-      .command("status")
-      .description(
-        "Check a saved SDK operation; returns JSON without downloading by default"
-      )
-      .argument("<operation-file>", "JSON emitted by video start")
-      .option("--download", "Download completed videos")
-      .option(
-        "--download-max-bytes <bytes>",
-        "SDK createDownload maxBytes (default: 2 GiB)"
-      )
-      .option("-o, --output <path>", "Downloaded video file or directory")
-      .option(
-        "--json",
-        "JSON status / downloaded artifact manifest (always enabled)"
-      )
-      .option("-q, --quiet", "Suppress progress")
-      .option("--no-preview", "Disable previews")
-  ));
+  const statusCommand = addProviderOptions(
+    addGatewayOptions(
+      command
+        .command("status")
+        .description(
+          "Check a saved SDK operation; returns JSON without downloading by default"
+        )
+        .argument("<operation-file>", "JSON emitted by video start")
+        .option("--download", "Download completed videos")
+        .option(
+          "--download-max-bytes <bytes>",
+          "SDK createDownload maxBytes (default: 2 GiB)"
+        )
+        .option("-o, --output <path>", "Downloaded video file or directory")
+        .option(
+          "--json",
+          "JSON status / downloaded artifact manifest (always enabled)"
+        )
+        .option("-q, --quiet", "Suppress progress")
+        .option("--no-preview", "Disable previews")
+    )
+  );
   addTimeoutOption(statusCommand, DEFAULT_TIMEOUT_MS).action(
     async (
       path: string | undefined,

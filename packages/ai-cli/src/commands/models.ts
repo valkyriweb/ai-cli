@@ -203,7 +203,12 @@ export function registerModelsCommand(program: Command) {
           );
           process.exit(1);
         }
-        await showModelInfo(model, opts.json ?? false, provider, catalogOptions);
+        await showModelInfo(
+          model,
+          opts.json ?? false,
+          provider,
+          catalogOptions
+        );
         return;
       }
       const validTypes = [

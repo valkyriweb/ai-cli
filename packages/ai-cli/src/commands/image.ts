@@ -52,33 +52,36 @@ export function registerImageCommand(program: Command) {
   const command = addProviderOptions(
     addMediaOptions(
       program
-      .command("image")
-      .description(
-        "Generate or edit images using AI SDK generateImage or generateText"
+        .command("image")
+        .description(
+          "Generate or edit images using AI SDK generateImage or generateText"
+        )
+        .argument("[prompt]", "Image prompt"),
+      DEFAULT_CONCURRENCY
+    )
+      .option(
+        "-i, --images <path-or-url>",
+        "SDK prompt.images reference (repeatable)",
+        collectImageReference,
+        []
       )
-      .argument("[prompt]", "Image prompt"),
-    DEFAULT_CONCURRENCY
-  )
-    .option(
-      "-i, --images <path-or-url>",
-      "SDK prompt.images reference (repeatable)",
-      collectImageReference,
-      []
-    )
-    .option(
-      "--mask <path-or-url>",
-      "SDK prompt.mask for editing reference images"
-    )
-    .option("--size <WxH>", "SDK image size, e.g. 1024x1024")
-    .option("--aspect-ratio <W:H>", "SDK aspectRatio, e.g. 16:9")
-    .option("--max-images-per-call <n>", "SDK maxImagesPerCall batching limit")
-    .option(
-      "--api <api>",
-      "generateImage or generateText (default: model catalog)"
-    )
-    .option(
-      "--generate-text-options <path>",
-      "JSON generateText settings and provider tools; selects generateText"
+      .option(
+        "--mask <path-or-url>",
+        "SDK prompt.mask for editing reference images"
+      )
+      .option("--size <WxH>", "SDK image size, e.g. 1024x1024")
+      .option("--aspect-ratio <W:H>", "SDK aspectRatio, e.g. 16:9")
+      .option(
+        "--max-images-per-call <n>",
+        "SDK maxImagesPerCall batching limit"
+      )
+      .option(
+        "--api <api>",
+        "generateImage or generateText (default: model catalog)"
+      )
+      .option(
+        "--generate-text-options <path>",
+        "JSON generateText settings and provider tools; selects generateText"
       )
   );
   addTimeoutOption(command, DEFAULT_TIMEOUT_MS).action(
@@ -133,8 +136,7 @@ export function registerImageCommand(program: Command) {
       );
       const explicitApi = custom
         ? "generateImage"
-        : (opts.api ??
-          (opts.generateTextOptions ? "generateText" : undefined));
+        : (opts.api ?? (opts.generateTextOptions ? "generateText" : undefined));
       const languageIds = new Set([
         ...catalog.languageImageModelIds,
         ...SVG_LANGUAGE_IMAGE_MODEL_IDS,

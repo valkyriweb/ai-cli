@@ -1,6 +1,6 @@
+import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createGateway } from "@ai-sdk/gateway";
 import { gateway, type ImageModel, type LanguageModel } from "ai";
 
 import type { Command } from "./command.js";
