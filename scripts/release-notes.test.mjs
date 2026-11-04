@@ -16,15 +16,15 @@ function extract(version, path = changelog) {
 }
 
 test("real changelog selects current and older release bodies independently", () => {
-  const latest = extract("0.4.3");
+  const latest = extract("0.9.0");
   assert.equal(latest.status, 0, latest.stderr);
-  assert.match(latest.stdout, /Configurable request timeouts/);
-  assert.doesNotMatch(latest.stdout, /Model info|Custom OpenAI-compatible providers/);
+  assert.match(latest.stdout, /ai login/);
+  assert.doesNotMatch(latest.stdout, /Custom OpenAI-compatible providers|## 0\.8\.1/);
 
-  const older = extract("0.4.2");
-  assert.equal(older.status, 0, older.stderr);
-  assert.match(older.stdout, /Model info/);
-  assert.doesNotMatch(older.stdout, /Configurable request timeouts|Aspect ratio/);
+  // Only the latest release carries markers; older sections fail closed.
+  const older = extract("0.8.1");
+  assert.notEqual(older.status, 0);
+  assert.equal(older.stdout, "");
 
   const { version } = JSON.parse(
     readFileSync(new URL("../packages/ai-cli/package.json", import.meta.url), "utf8")

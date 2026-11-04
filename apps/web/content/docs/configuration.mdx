@@ -1,0 +1,98 @@
+---
+title: Configuration
+description: Environment variables and defaults.
+---
+
+ai-cli uses environment variables for defaults and flags for each request. Image
+and video commands also accept JSON files for SDK provider options, headers,
+and structured media inputs. There is no global config file.
+
+## Environment variables
+
+<Properties>
+  <Property name="AI_GATEWAY_API_KEY" type="string">
+    Vercel AI Gateway API key. Takes priority over the key saved by `ai login`.
+  </Property>
+  <Property name="AI_CLI_PROVIDER" type="gateway | openai-compatible | openai-responses">
+    Provider mode. Defaults to `gateway`; custom endpoints require explicit Chat Completions or Responses selection.
+  </Property>
+  <Property name="AI_CLI_BASE_URL" type="URL">
+    Custom-provider API base URL, including `/v1`. `--base-url` takes priority.
+  </Property>
+  <Property name="AI_CLI_API_KEY_ENV" type="string">
+    Name of the environment variable containing the OpenAI-compatible API key.
+  </Property>
+  <Property name="AI_CLI_MODELS_URL" type="URL">
+    Optional models endpoint. Defaults to `AI_CLI_BASE_URL/models`.
+  </Property>
+  <Property name="AI_GATEWAY_BASE_URL" type="string">
+    Gateway baseURL for decide, image/video generation, and model discovery. Override with `--base-url`.
+  </Property>
+  <Property name="AI_GATEWAY_TEAM_ID_OR_SLUG" type="string">
+    Gateway teamIdOrSlug for decide, image/video, and models. Override with `--scope`.
+  </Property>
+  <Property name="AI_CLI_TEXT_MODEL" type="string">
+    Default text model. Overrides `openai/gpt-5.5`.
+  </Property>
+  <Property name="AI_CLI_IMAGE_MODEL" type="string">
+    Default image model. Overrides `openai/gpt-image-2`.
+  </Property>
+  <Property name="AI_CLI_VIDEO_MODEL" type="string">
+    Default video model. Overrides `bytedance/seedance-2.0`.
+  </Property>
+  <Property name="AI_CLI_SPEECH_MODEL" type="string">
+    Default speech model. Overrides `openai/tts-1`.
+  </Property>
+  <Property name="AI_CLI_TRANSCRIPTION_MODEL" type="string">
+    Default transcription model. Overrides `openai/whisper-1`.
+  </Property>
+  <Property name="AI_CLI_EVALUATION_MODEL" type="string">
+    Default evaluation model for `decide`. Overrides `typesafe-ai/jev`.
+  </Property>
+  <Property name="AI_CLI_OUTPUT_DIR" type="path">
+    Default output directory for generated files.
+  </Property>
+  <Property name="AI_CLI_PREVIEW" type="0 | 1">
+    `1` forces inline preview on, `0` disables it.
+  </Property>
+  <Property name="NO_COLOR" type="any">
+    Disable ANSI color output.
+  </Property>
+  <Property name="FORCE_COLOR" type="any">
+    Force color output even when not a TTY.
+  </Property>
+</Properties>
+
+## Precedence
+
+- `-m` flag always takes priority over `AI_CLI_*_MODEL` env vars.
+- `-o` flag always takes priority over `AI_CLI_OUTPUT_DIR`.
+- `--no-preview` takes priority over `AI_CLI_PREVIEW`.
+- `--provider`, `--base-url`, `--api-key-env`, and `--models-url` take priority over their environment equivalents.
+
+## Example shell profile
+
+```bash
+export AI_GATEWAY_API_KEY="gw_..."
+export AI_CLI_TEXT_MODEL="anthropic/claude-sonnet-4"
+export AI_CLI_IMAGE_MODEL="bfl/flux-2-pro"
+export AI_CLI_SPEECH_MODEL="openai/tts-1"
+export AI_CLI_OUTPUT_DIR="$HOME/ai-output"
+```
+
+## Custom OpenAI-compatible provider
+
+```bash
+export CUSTOM_ROUTER_KEY="..."
+export AI_CLI_PROVIDER=openai-compatible
+export AI_CLI_BASE_URL=https://router.example/v1
+export AI_CLI_API_KEY_ENV=CUSTOM_ROUTER_KEY
+export AI_CLI_TEXT_MODEL=my-text-model
+export AI_CLI_IMAGE_MODEL=openai/gpt-image-2
+ai models --type text --json
+ai models --type image --json
+ai text "return hello"
+ai image "a navy square on white" -o result.png
+```
+
+Use `openai-compatible` for Chat Completions or `openai-responses` for the Responses API. Both modes send image generation and reference-image edits to the configured provider's OpenAI-compatible image endpoints. Providers such as ClawRouter advertise image capabilities from `/models`. Video, speech, and transcription commands remain unsupported in custom modes and fail instead of falling back to AI Gateway. `PAPERCLIP_AGENT_ID` and `PAPERCLIP_RUN_ID`, when present, are forwarded through fixed attribution headers.

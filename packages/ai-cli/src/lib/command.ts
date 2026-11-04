@@ -22,10 +22,27 @@ interface OptionDefinition {
   defaultValue?: unknown;
 }
 
+export interface CommandDefinition {
+  name: string;
+  description: string;
+  runnable: boolean;
+  argument?: { name: string; required: boolean; description: string };
+  options: {
+    name: string;
+    long?: string;
+    description: string;
+    takesValue: boolean;
+    negated: boolean;
+    repeatable: boolean;
+  }[];
+  commands: CommandDefinition[];
+}
+
 export class CliUsageError extends Error {}
 
 export class Command {
   private commandName = "";
+  private readonly commandAliases: string[] = [];
   private commandDescription = "";
   private commandVersion?: string;
   private readonly parent?: Command;
@@ -40,6 +57,11 @@ export class Command {
 
   name(name: string): this {
     this.commandName = name;
+    return this;
+  }
+
+  alias(name: string): this {
+    this.commandAliases.push(name);
     return this;
   }
 
@@ -104,6 +126,10 @@ export class Command {
     return this;
   }
 
+  hasOption(long: string): boolean {
+    return this.options.some((option) => option.long === long);
+  }
+
   action<TArgument, TOptions>(
     handler: (
       argument: TArgument,
@@ -115,11 +141,44 @@ export class Command {
     return this;
   }
 
+  definition(): CommandDefinition {
+    return {
+      name: this.commandName,
+      description: this.commandDescription,
+      runnable: Boolean(this.actionHandler) || this.commands.length === 0,
+      argument: this.argumentDefinition
+        ? {
+            name: this.argumentDefinition.name,
+            required: this.argumentDefinition.syntax.startsWith("<"),
+            description: this.argumentDefinition.description,
+          }
+        : undefined,
+      options: this.options.map((option) => ({
+        name: option.name,
+        long: option.long,
+        description: optionDescription(option),
+        takesValue: option.valueName !== undefined,
+        negated: option.negated,
+        repeatable: Array.isArray(option.defaultValue),
+      })),
+      commands: this.commands.map((command) => command.definition()),
+    };
+  }
+
   async parseAsync(argv: string[]): Promise<void> {
     await this.run(argv.slice(2));
   }
 
   private async run(args: string[], optionsEnded = false): Promise<void> {
+    // Commands such as video have a default action as well as start/status.
+    // `--` always permits a prompt that happens to be a subcommand name.
+    if (
+      this.actionHandler &&
+      (optionsEnded || (args[0] !== "help" && !this.findCommand(args[0])))
+    ) {
+      await this.runLeaf(args, optionsEnded);
+      return;
+    }
     if (this.commands.length > 0) {
       await this.runParent(args, optionsEnded);
       return;
@@ -152,9 +211,7 @@ export class Command {
       return;
     }
 
-    const command = this.commands.find(
-      (candidate) => candidate.commandName === first
-    );
+    const command = this.findCommand(first);
     if (command) {
       await command.run(args.slice(1), optionsEnded);
       return;
@@ -454,11 +511,17 @@ export class Command {
       return;
     }
 
-    const command = this.commands.find(
-      (candidate) => candidate.commandName === name
-    );
+    const command = this.findCommand(name);
     if (!command) throw new CliUsageError(`unknown command '${name}'`);
     command.writeHelp(process.stdout);
+  }
+
+  private findCommand(name: string | undefined): Command | undefined {
+    return this.commands.find(
+      (candidate) =>
+        candidate.commandName === name ||
+        candidate.commandAliases.some((alias) => alias === name)
+    );
   }
 
   private findVersion(): string | undefined {

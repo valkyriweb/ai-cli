@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-
 import { generateImage, generateText, streamText } from "ai";
+import { afterEach, describe, expect, test } from "vitest";
 
 import { fetchModels, resetGatewayCache } from "./models.js";
 import {
@@ -23,6 +22,29 @@ describe("provider configuration", () => {
   test("preserves AI Gateway as the default", () => {
     expect(selectedProviderMode({}, {})).toBe("gateway");
     expect(resolveProviderConfig({}, {})).toEqual({ mode: "gateway" });
+  });
+
+  test("maps upstream --base-url onto the selected provider", () => {
+    expect(
+      resolveProviderConfig({ baseUrl: "https://gw.example.test/" }, {})
+    ).toEqual({ mode: "gateway", baseUrl: "https://gw.example.test" });
+    expect(
+      resolveProviderConfig(
+        {},
+        { AI_GATEWAY_BASE_URL: "https://gw.example.test", AI_CLI_BASE_URL: "x" }
+      )
+    ).toEqual({ mode: "gateway", baseUrl: "https://gw.example.test" });
+    const custom = resolveProviderConfig(
+      {
+        provider: "openai-compatible",
+        baseUrl: "http://router.test/v1",
+        apiKeyEnv: "FIXTURE_KEY",
+      },
+      { FIXTURE_KEY: "fixture-key-value", AI_GATEWAY_BASE_URL: "https://gw" }
+    );
+    expect(custom.mode === "openai-compatible" && custom.baseUrl).toBe(
+      "http://router.test/v1"
+    );
   });
 
   test("requires explicit custom credentials and rejects URL userinfo", () => {
