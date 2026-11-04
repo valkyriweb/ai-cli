@@ -1,6 +1,138 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
+
+<!-- release:start -->
+
+### New Features
+
+- Add `ai login` and `ai logout`. `ai login` opens the AI Gateway API keys page, checks the key you paste, and saves it to `~/.config/ai-cli/auth.json`, so you no longer need to export `AI_GATEWAY_API_KEY` in every shell. `AI_GATEWAY_API_KEY` still takes priority. Authentication errors now say whether to run `ai login` or check your key.
+
+### Contributors
+
+- @Railly
+
+<!-- release:end -->
+
+## 0.8.1
+
+### Bug Fixes
+
+- Support `--n` for image models that use `generateText`, such as Gemini. ai-cli makes one call per requested image, with `--concurrency` limiting how many calls run at once.
+- Give each image request its own `--timeout` window, so calls queued by `--concurrency` do not time out before they start.
+
+### Contributors
+
+- @lahfir
+
+## 0.8.0
+
+### New Features
+
+- Add `ai mcp`, a stdio MCP server that exposes `ai` commands as typed tools (`text`, `image`, `decide`, `models`; `--profile media` or `all` adds video and audio). Tool inputs come from each command's own flags, and every call runs the same `ai` binary. The server reads `AI_GATEWAY_API_KEY` from its environment and rejects Gateway connection flags from agents.
+- `--scope <team>` selects the Gateway team (ID or slug) on commands with Gateway connection options. `--team-id-or-slug` is still accepted and deprecated; `--scope` wins if both are passed.
+
+### Bug Fixes
+
+- `ai decide` now accepts `--base-url`, `--team-id-or-slug`, and `--headers`, and honors `AI_GATEWAY_BASE_URL` and `AI_GATEWAY_TEAM_ID_OR_SLUG`, so decision requests and short model name lookup use the selected Gateway team.
+- `ai decide` requests now send the same `http-referer` and `x-title` headers as other commands.
+- An empty `AI_GATEWAY_TEAM_ID_OR_SLUG` is treated as unset instead of sending an empty team header.
+
+### Contributors
+
+- @lahfir
+
+## 0.7.0
+
+### New Features
+
+- Add `-i, --images` to `ai decide` so decision models such as Jev can judge images, alone or alongside stdin text or JSON. Upgrade to `ai` 7.0.139 and `@ai-sdk/gateway` 4.0.112, which add file parts to decision state. Requests now go to the gateway's `/decision-model` endpoint instead of `/evaluation-model`.
+
+### Improvements
+
+- Move repository development, builds, tests, and CI to Node.js and npm. Update installation requirements to Node.js 22+ and document the Node.js 24+ development workflow.
+
+### Contributors
+
+- @Railly
+
+## 0.6.1
+
+### Improvements
+
+- Rename `ai evaluate` to `ai decide`, keeping `evaluate` as a backward-compatible alias. Help, documentation, and the bundled skill now use `decide`; existing evaluation documentation URLs redirect to `/docs/decide`.
+
+### Contributors
+
+- @ctate
+
+## 0.6.0
+
+### Breaking Changes
+
+- Align image/video flags with AI SDK names: `--n`, image `--images` / `--mask`, video `--frame-images` / `--input-references`. Remove `--count`, image `--image`, `--quality`, `--style`, and the unreleased `--start-frame` / `--end-frame` aliases. Provider-specific settings now use `--provider-options` JSON.
+- Image/video JSON now contains all artifacts and SDK diagnostics in per-model results with `elapsedMs`. Multiple media outputs always save to separate files. Image API discovery failures require an explicit API selection. Video defaults to SDK polling with a 600-second timeout.
+
+### New Features
+
+- Upgrade AI SDK to 7.0.123 and Gateway to 4.0.101. Expose native batching, seeds, retries, headers, Gateway routing/connection settings, masks, frame roles (including last-frame-only), references, FPS, audio and polling/download controls.
+- Add `video start` / `video status` with persisted operations, webhook URLs and optional downloads. Expose language-image settings and provider tools, preserving all generated images and accompanying text.
+
+### Improvements
+
+- Restore “Generate anything from your terminal” as the headline in the landing page, social preview, CLI help, and package description.
+
+### Bug Fixes
+
+- Preserve native model capabilities, image call diagnostics, usage, warnings, provider metadata and all output media types. Report structured failures even in quiet mode; validate numeric inputs before requests and preserve zero seeds despite the current Gateway serialization bug.
+- Reject malformed model catalogs during automatic image API selection and associate batched video outputs with their own call's response ID.
+- Require an explicit image API when the catalog omits the selected model. Save successful image/video batches and status downloads after a sibling failure, and report short output counts as incomplete while keeping returned media.
+- Keep successful video URL downloads when another URL in the same call fails, make URL downloads work in the published Node CLI, and sum reported Gateway cost fields across completed video batches.
+- Resolve short language model names for explicit image `generateText` calls and infer saved video formats from generic status downloads. Clarify exit codes when a partial media result was saved.
+- Keep automatic `generateText` routing for Quiver Arrow 2 SVG models when the Gateway image catalog omits them.
+
+### Contributors
+
+- @ctate
+
+## 0.5.2
+
+### Bug Fixes
+
+- **Quiver Arrow SVG output** - `ai image` now extracts SVG markup returned by Arrow 2 and Arrow 2 Telos, saves SVG output from all Arrow image models with the `.svg` extension, and displays larger SVG previews on a white background
+
+### Contributors
+
+- @ctate
+
+## 0.5.1
+
+### New Features
+
+- **AI SDK evaluation** - `ai evaluate` exposes AI SDK’s evaluation API with typed shell flags or a full JSON question map. Boolean, Choice, and Score questions share intact text or JSON state. Output preserves the SDK result, including probabilities, usage, provider metadata, and response information. Jev is the default evaluation model.
+- **Evaluation model discovery** - `ai models --type evaluation` lists evaluation models; `AI_CLI_EVALUATION_MODEL` configures the evaluate default
+
+### Contributors
+
+- @ctate
+
+## 0.5.0
+
+### New Features
+
+- **Semantic record commands** - `ai filter`, `ai rank`, and `ai pick` evaluate lines, JSON arrays, and JSONL with Jev through AI Gateway, preserving selected records and exposing probabilities, scores, usage, and timing with `--json`
+- **Evaluation model discovery** - `ai models --type evaluation` lists evaluation models; `AI_CLI_EVALUATION_MODEL` configures the decision-command default
+
+### Bug Fixes
+
+- **Slow stdin pipelines** - commands wait for upstream output through EOF instead of discarding input if the first byte arrives after one second
+- **Fail-fast record evaluation** - decision commands stop pending batches and cancel in-flight evaluation requests after the first batch failure
+
+### Contributors
+
+- @ctate
+
+## 0.4.4
 
 ### New Features
 
@@ -12,9 +144,16 @@
 - **Fail-closed custom mode** - supported image calls stay on the configured provider while unsupported video, speech, and transcription commands never fall back to AI Gateway, and authentication material is redacted from CLI errors
 - **Complete license artifacts** - source and npm package now include the canonical Apache-2.0 license text declared by package metadata
 
-## 0.4.3
+### Bug Fixes
 
-<!-- release:start -->
+- **Non-PNG image previews** - image models that return JPEG or WebP data now display correctly in Kitty-compatible terminals while preserving the original format in saved files
+
+### Contributors
+
+- @Railly
+- @ctate
+
+## 0.4.3
 
 ### New Features
 
@@ -33,11 +172,7 @@
 - @Railly
 - @ctate
 
-<!-- release:end -->
-
 ## 0.4.2
-
-<!-- release:start -->
 
 ### New Features
 
@@ -47,11 +182,7 @@
 
 - @ctate
 
-<!-- release:end -->
-
 ## 0.4.1
-
-<!-- release:start -->
 
 ### Bug Fixes
 
@@ -61,11 +192,7 @@
 
 - @ctate
 
-<!-- release:end -->
-
 ## 0.4.0
-
-<!-- release:start -->
 
 ### New Features
 
@@ -86,11 +213,7 @@
 - @piotrjoniec
 - @ctate
 
-<!-- release:end -->
-
 ## 0.3.1
-
-<!-- release:start -->
 
 ### New Features
 
@@ -105,11 +228,7 @@
 
 - @ctate
 
-<!-- release:end -->
-
 ## 0.3.0
-
-<!-- release:start -->
 
 ### New Features
 
@@ -120,11 +239,7 @@
 
 - @ctate
 
-<!-- release:end -->
-
 ## 0.2.1
-
-<!-- release:start -->
 
 ### Bug Fixes
 
@@ -138,11 +253,7 @@
 
 - @ctate
 
-<!-- release:end -->
-
 ## 0.2.0
-
-<!-- release:start -->
 
 ### New Features
 
@@ -174,11 +285,7 @@
 - @ctate
 - @dancer
 
-<!-- release:end -->
-
 ## 0.1.1
-
-<!-- release:start -->
 
 ### Improvements
 
@@ -187,8 +294,6 @@
 ### Contributors
 
 - @ctate
-
-<!-- release:end -->
 
 ## 0.1.0
 
@@ -199,5 +304,3 @@
 - H.264 keyframe decoding via OpenH264 WASM — no native dependencies required
 - Stdin piping support for chaining commands
 - Shell completions for bash, zsh, and fish
-
-<!-- release:end -->

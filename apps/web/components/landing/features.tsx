@@ -14,7 +14,17 @@ const multimodelrows: readonly row[] = [
   { tone: "cmd", text: '$ ai image "a sunset" -m "gpt-image-2,flux-2-pro"' },
   { tone: "dim", text: "" },
   { tone: "code", text: "Saved to /Users/you/resp_img_a-1.png (3.2s)" },
-  { tone: "code", text: "Saved to /Users/you/resp_img_b-2.png (4.7s)" },
+  { tone: "code", text: "Saved to /Users/you/resp_img_b-2.jpg (4.7s)" },
+];
+
+const evaluationrows: readonly row[] = [
+  { tone: "dim", text: "$ cat ticket.txt |" },
+  { tone: "cmd", text: "  ai decide \\" },
+  { tone: "cmd", text: '    --boolean "refund=Refund requested?" \\' },
+  { tone: "cmd", text: '    --choice "team=Which team?" \\' },
+  { tone: "cmd", text: '    --choices "team=billing,support" \\' },
+  { tone: "cmd", text: '    --score "tone=How positive?" \\' },
+  { tone: "cmd", text: '    --levels "tone=angry,neutral,happy"' },
 ];
 
 const pipingrows: readonly row[] = [
@@ -97,16 +107,16 @@ function Spotlight({
   return (
     <div className="grid min-w-0 items-center gap-10 overflow-hidden md:grid-cols-2 md:gap-16">
       <div className={`min-w-0 ${flip ? "order-1 md:order-2" : "order-1 md:order-1"}`}>
-        <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+        <h2 className="text-2xl font-semibold tracking-tight text-gray-1000 sm:text-3xl">
           {title}
         </h2>
-        <p className="mt-4 text-sm text-[#888] leading-relaxed">
+        <p className="mt-4 text-sm text-gray-900 leading-relaxed">
           {description}
         </p>
         <ul className="mt-8 space-y-3">
           {bullets.map((b) => (
-            <li key={b} className="flex items-center gap-3 text-sm text-white/70">
-              <span className="h-1 w-1 rounded-full bg-white/40" />
+            <li key={b} className="flex items-center gap-3 text-sm text-gray-1000">
+              <span className="h-1 w-1 rounded-full bg-gray-700" />
               {b}
             </li>
           ))}
@@ -133,20 +143,31 @@ export function Features() {
         <div className="space-y-16 md:space-y-28">
           <Spotlight
             tone="slate"
-            title="Multi-model comparison."
-            description="Run the same prompt across multiple models in parallel. Compare outputs side by side to find the best result. Combine with -n to generate multiple per model."
+            title="Compare models in one command."
+            description="Pass comma-separated model IDs to run the same prompt on each model in parallel. Add -n to generate several outputs per model."
             bullets={[
-              "comma-separated model IDs for parallel generation",
-              "configurable concurrency limits",
-              "per-job timing and structured JSON output",
+              "--concurrency caps parallel requests",
+              "--json writes outputs, usage, and provider metadata",
             ]}
             window={<Panel rows={multimodelrows} />}
           />
 
           <Spotlight
+            tone="slate"
+            title="Ask typed questions with ai decide."
+            description="Send text, JSON, or images as shared state and ask several Boolean, choice, and score questions in one call. Answers come back as JSON with probabilities, ready for jq or a script."
+            bullets={[
+              "--boolean, --choice, and --score in the same call",
+              "--questions loads a reusable JSON question file",
+              "default model: typesafe-ai/jev on AI Gateway",
+            ]}
+            window={<Panel rows={evaluationrows} />}
+          />
+
+          <Spotlight
             tone="ash"
-            title="Pipe everything."
-            description="Pipe text in as context, pipe images into video generation, turn text into speech, or transcribe piped audio. Raw output on stdout when piped, file saves when interactive."
+            title="Pipe in, pipe out."
+            description="Text on stdin becomes prompt context. Binary stdin feeds the image, video, and audio commands, so ai image can pipe straight into ai video."
             bullets={[
               "text stdin becomes prompt context",
               "binary stdin for image, video, and audio workflows",
@@ -158,12 +179,12 @@ export function Features() {
 
           <Spotlight
             tone="iron"
-            title="Hundreds of models, one key."
-            description="Access text, image, video, speech, and transcription models from OpenAI, Anthropic, Google, Black Forest Labs, ByteDance, and more through Vercel AI Gateway."
+            title="One key for every model type."
+            description="Vercel AI Gateway serves text, image, video, speech, transcription, and evaluation models from OpenAI, Anthropic, Google, Black Forest Labs, ByteDance, and more with one API key."
             bullets={[
               "short names resolve automatically: flux-2-pro, gpt-5.5, tts-1",
               "live model listing from the gateway",
-              "per-type defaults configurable via env vars",
+              "per-type defaults through AI_CLI_*_MODEL env vars",
             ]}
             window={<Panel rows={modelrows} />}
           />

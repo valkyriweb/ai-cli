@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+
+import { describe, expect, test } from "vitest";
 
 import { writeOutput } from "./output.js";
 
@@ -92,6 +93,58 @@ describe("writeOutput", () => {
       expect(path).not.toBeNull();
       expect(basename(path!)).toBe("speech_123.wav");
       expect(readFileSync(path!)).toEqual(Buffer.from([1, 2, 3]));
+    });
+  });
+
+  test("uses the generated image media type for directory filenames", async () => {
+    await withTempDir(async (dir) => {
+      const path = await writeOutput({
+        data: Buffer.from([1, 2, 3]),
+        format: "image",
+        outputPath: dir,
+        outputId: "resp_123",
+        mediaType: "image/jpeg",
+        quiet: true,
+        display: false,
+      });
+
+      expect(path).not.toBeNull();
+      expect(basename(path!)).toBe("resp_123.jpg");
+    });
+  });
+
+  test("uses an svg extension for generated SVG images", async () => {
+    await withTempDir(async (dir) => {
+      const path = await writeOutput({
+        data: '<svg xmlns="http://www.w3.org/2000/svg" />',
+        format: "image",
+        outputPath: dir,
+        outputId: "resp_123",
+        mediaType: "image/svg+xml",
+        quiet: true,
+        display: false,
+      });
+
+      expect(path).not.toBeNull();
+      expect(basename(path!)).toBe("resp_123.svg");
+    });
+  });
+
+  test("prefers an explicit image extension over the media type", async () => {
+    await withTempDir(async (dir) => {
+      const path = await writeOutput({
+        data: Buffer.from([1, 2, 3]),
+        format: "image",
+        extension: ".png",
+        outputPath: dir,
+        outputId: "resp_123",
+        mediaType: "image/jpeg",
+        quiet: true,
+        display: false,
+      });
+
+      expect(path).not.toBeNull();
+      expect(basename(path!)).toBe("resp_123.png");
     });
   });
 });
