@@ -1,23 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, test } from "vitest";
 
 import pkg from "../package.json";
+import { runNode } from "./test/process.js";
 
-const CLI = ["bun", "run", "src/index.ts"];
-const ROOT = import.meta.dir + "/..";
+const CLI = ["--import", "tsx", "src/index.ts"];
+const ROOT = import.meta.dirname + "/..";
 
 async function run(...args: string[]) {
-  const proc = Bun.spawn([...CLI, ...args], {
+  return runNode([...CLI, ...args], {
     cwd: ROOT,
-    stdout: "pipe",
-    stderr: "pipe",
-    stdin: "ignore",
   });
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
-  return { exitCode, stdout, stderr };
 }
 
 describe("cli integration", () => {
@@ -27,62 +25,54 @@ describe("cli integration", () => {
       const credential = "fixture-only-provider-credential";
       const requests: Array<{ path: string; authorization: string | null }> =
         [];
-      const server = Bun.serve({
-        hostname: "127.0.0.1",
-        port: 0,
-        fetch(request) {
-          const path = new URL(request.url).pathname;
-          requests.push({
-            path,
-            authorization: request.headers.get("authorization"),
-          });
-          if (path === "/v1/models") {
-            return Response.json({ data: [{ id: "fixture-model" }] });
-          }
-          return Response.json(
-            {
-              error: {
-                message: `Fixture denied ${credential}`,
-                type: "authentication_error",
-              },
-            },
-            { status: 401 }
-          );
-        },
-      });
-      const proc = Bun.spawn(
-        [
-          process.execPath,
-          "run",
-          "src/index.ts",
-          "text",
-          "fixture prompt",
-          "--model",
-          "fixture-model",
-          "--count",
-          String(count),
-        ],
-        {
-          cwd: ROOT,
-          env: {
-            PATH: process.env.PATH ?? "",
-            AI_CLI_PROVIDER: "openai-compatible",
-            AI_CLI_BASE_URL: `http://127.0.0.1:${server.port}/v1`,
-            AI_CLI_API_KEY_ENV: "FIXTURE_CREDENTIAL",
-            FIXTURE_CREDENTIAL: credential,
-          },
-          stdout: "pipe",
-          stderr: "pipe",
-          stdin: "ignore",
+      const server = createServer((request, response) => {
+        const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+        requests.push({
+          path,
+          authorization: request.headers.authorization ?? null,
+        });
+        request.resume();
+        response.setHeader("content-type", "application/json");
+        if (path === "/v1/models") {
+          response.end(JSON.stringify({ data: [{ id: "fixture-model" }] }));
+          return;
         }
+        response.statusCode = 401;
+        response.end(
+          JSON.stringify({
+            error: {
+              message: `Fixture denied ${credential}`,
+              type: "authentication_error",
+            },
+          })
+        );
+      });
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve)
       );
-      const timeout = setTimeout(() => proc.kill(), 10_000);
+      const { port } = server.address() as AddressInfo;
       try {
-        const [stdout, stderr, exitCode] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-          proc.exited,
-        ]);
+        const { stdout, stderr, exitCode } = await runNode(
+          [
+            ...CLI,
+            "text",
+            "fixture prompt",
+            "--model",
+            "fixture-model",
+            "--count",
+            String(count),
+          ],
+          {
+            cwd: ROOT,
+            env: {
+              PATH: process.env.PATH ?? "",
+              AI_CLI_PROVIDER: "openai-compatible",
+              AI_CLI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+              AI_CLI_API_KEY_ENV: "FIXTURE_CREDENTIAL",
+              FIXTURE_CREDENTIAL: credential,
+            },
+          }
+        );
         expect(exitCode).toBe(1);
         expect(stdout + stderr).toContain("Fixture denied [REDACTED]");
         expect(stdout + stderr).not.toContain(credential);
@@ -94,10 +84,7 @@ describe("cli integration", () => {
           expect(request.authorization).toBe(`Bearer ${credential}`);
         }
       } finally {
-        clearTimeout(timeout);
-        proc.kill();
-        await proc.exited;
-        await server.stop(true);
+        await new Promise((resolve) => server.close(resolve));
       }
     },
     20_000
@@ -110,12 +97,33 @@ describe("cli integration", () => {
     expect(pkg.dependencies).not.toHaveProperty("commander");
   });
 
+  test("built CLI runs on Node.js outside the repository", async () => {
+    const result = await runNode(
+      [
+        fileURLToPath(new URL("../dist/index.js", import.meta.url)),
+        "--version",
+      ],
+      { cwd: tmpdir() }
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(pkg.version);
+    expect(result.stderr).toBe("");
+  });
+
+  test("built package includes the WebAssembly decoder", () => {
+    const wasm = readFileSync(
+      new URL("../dist/openh264.wasm", import.meta.url)
+    );
+    expect([...wasm.subarray(0, 4)]).toEqual([0x00, 0x61, 0x73, 0x6d]);
+  });
+
   test("--help exits 0 and lists subcommands", async () => {
     const { exitCode, stdout } = await run("--help");
     expect(exitCode).toBe(0);
-    for (const sub of ["text", "image", "video", "audio", "models"]) {
+    for (const sub of ["text", "image", "video", "audio", "models", "decide"]) {
       expect(stdout).toContain(sub);
     }
+    expect(stdout).not.toContain("evaluate");
   });
 
   test("--version exits 0 and prints semver", async () => {
@@ -255,6 +263,8 @@ describe("cli integration", () => {
     const { exitCode, stdout } = await run("video", "--help");
     expect(exitCode).toBe(0);
     expect(stdout).toContain("--image");
+    expect(stdout).toContain("--frame-images");
+    expect(stdout).toContain("--input-references");
     expect(stdout).toContain("--duration");
     expect(stdout).toContain("--aspect-ratio");
     expect(stdout).toContain("--resolution");
@@ -299,7 +309,7 @@ describe("cli integration", () => {
   test.each([
     [["text"], "120"],
     [["image"], "300"],
-    [["video"], "300"],
+    [["video"], "600"],
     [["audio", "speak"], "120"],
     [["audio", "transcribe"], "120"],
   ])("%s --help lists --timeout with its default", async (command, seconds) => {
@@ -356,6 +366,68 @@ describe("cli integration", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("[model]");
     expect(stdout).toContain("detailed info");
+    expect(stdout).toContain("evaluation");
+  });
+
+  test("decide documents its typed interface", async () => {
+    const { exitCode, stdout } = await run("decide", "--help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Usage: ai decide");
+    for (const flag of [
+      "--boolean",
+      "--choice",
+      "--choices",
+      "--score",
+      "--levels",
+      "--questions",
+      "--images",
+      "--input",
+      "--provider-options",
+      "--max-retries",
+    ]) {
+      expect(stdout).toContain(flag);
+    }
+    expect(stdout).toContain("typesafe-ai/jev");
+    expect(stdout).not.toContain("--count");
+  });
+
+  test.each([
+    ["evaluate", "--help"],
+    ["help", "evaluate"],
+    ["help", "decide"],
+  ])("%s %s displays the canonical decide help", async (command, help) => {
+    const canonical = await run("decide", "--help");
+    expect(await run(command, help)).toEqual(canonical);
+  });
+
+  test.each(["filter", "rank", "pick", "judge"])(
+    "%s is not a command",
+    async (command) => {
+      const result = await run(command);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("unknown command");
+    }
+  );
+
+  test.each(["decide", "evaluate"])(
+    "%s requires explicit typed questions",
+    async (command) => {
+      const result = await run(command);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("named question is required");
+    }
+  );
+
+  test("decide validates flags before requesting a model", async () => {
+    for (const args of [
+      ["--boolean", "missing-id"],
+      ["--choice", "team=Which team?"],
+      ["--choices", "team=billing,support"],
+      ["--input", "yaml"],
+      ["--max-retries", "-1"],
+    ]) {
+      expect((await run("decide", ...args)).exitCode).toBe(1);
+    }
   });
 
   test("models with unknown model exits 1", async () => {

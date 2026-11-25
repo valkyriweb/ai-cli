@@ -1,3 +1,4 @@
+import { createGateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { gateway, type ImageModel, type LanguageModel } from "ai";
@@ -16,6 +17,8 @@ export interface ProviderOptions {
 
 export interface GatewayProviderConfig {
   mode: "gateway";
+  /** Upstream `--base-url` / AI_GATEWAY_BASE_URL in Gateway mode. */
+  baseUrl?: string;
 }
 
 export interface OpenAICompatibleProviderConfig {
@@ -40,15 +43,32 @@ const ATTRIBUTION_HEADERS: ReadonlyArray<{
   { header: "x-pi-session-id", env: "PAPERCLIP_RUN_ID" },
 ];
 
+/**
+ * Adds the fork's custom-provider flags. `--base-url` is upstream's flag: it
+ * selects the Gateway baseURL by default and the OpenAI-compatible base URL
+ * when `--provider` selects a custom provider. It is only added here for
+ * commands that do not already register upstream's Gateway connection flags.
+ */
 export function addProviderOptions(command: Command): Command {
+  if (!command.hasOption("--base-url")) {
+    command.option(
+      "--base-url <url>",
+      "Gateway baseURL, or the API base URL for custom providers"
+    );
+  }
   return command
     .option(
       "--provider <provider>",
       "Provider: gateway, openai-compatible, or openai-responses"
     )
-    .option("--base-url <url>", "OpenAI-compatible API base URL")
-    .option("--api-key-env <name>", "Environment variable containing API key")
-    .option("--models-url <url>", "Optional OpenAI-compatible models endpoint");
+    .option(
+      "--api-key-env <name>",
+      "Custom providers: environment variable containing the API key"
+    )
+    .option(
+      "--models-url <url>",
+      "Custom providers: optional OpenAI-compatible models endpoint"
+    );
 }
 
 export function selectedProviderMode(
@@ -75,8 +95,15 @@ export function resolveProviderConfig(
   env: NodeJS.ProcessEnv = process.env
 ): ProviderConfig {
   const mode = selectedProviderMode(options, env);
-  if (mode === "gateway") return { mode };
+  if (mode === "gateway") {
+    const gatewayBaseUrl =
+      options.baseUrl ?? (env.AI_GATEWAY_BASE_URL || undefined);
+    return gatewayBaseUrl === undefined
+      ? { mode }
+      : { mode, baseUrl: normalizeHttpUrl(gatewayBaseUrl, "--base-url") };
+  }
 
+  // Upstream's `--base-url` flag doubles as the custom-provider base URL.
   const baseUrl = normalizeHttpUrl(
     options.baseUrl ?? env.AI_CLI_BASE_URL,
     "OpenAI-compatible base URL"
@@ -124,7 +151,7 @@ export function createImageModel(
   config: ProviderConfig,
   modelId: string
 ): ImageModel {
-  if (config.mode === "gateway") return gateway.image(modelId);
+  if (config.mode === "gateway") return gatewayFor(config).image(modelId);
   return createOpenAI({
     baseURL: config.baseUrl,
     apiKey: config.apiKey,
@@ -136,7 +163,7 @@ export function createTextModel(
   config: ProviderConfig,
   modelId: string
 ): LanguageModel {
-  if (config.mode === "gateway") return gateway(modelId);
+  if (config.mode === "gateway") return gatewayFor(config)(modelId);
   if (config.mode === "openai-responses") {
     return createOpenAI({
       baseURL: config.baseUrl,
@@ -151,6 +178,10 @@ export function createTextModel(
     apiKey: config.apiKey,
     headers: config.headers,
   }).chatModel(modelId);
+}
+
+function gatewayFor(config: GatewayProviderConfig) {
+  return config.baseUrl ? createGateway({ baseURL: config.baseUrl }) : gateway;
 }
 
 export function providerRequestHeaders(

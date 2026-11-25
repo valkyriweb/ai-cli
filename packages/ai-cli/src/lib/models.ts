@@ -4,7 +4,13 @@ import type {
 } from "./provider.js";
 import { providerRequestHeaders } from "./provider.js";
 
-export type Modality = "text" | "image" | "video" | "speech" | "transcription";
+export type Modality =
+  | "text"
+  | "image"
+  | "video"
+  | "speech"
+  | "transcription"
+  | "evaluation";
 
 const DEFAULTS: Record<Modality, string> = {
   text: process.env.AI_CLI_TEXT_MODEL ?? "openai/gpt-5.5",
@@ -12,6 +18,7 @@ const DEFAULTS: Record<Modality, string> = {
   video: process.env.AI_CLI_VIDEO_MODEL ?? "bytedance/seedance-2.0",
   speech: process.env.AI_CLI_SPEECH_MODEL ?? "openai/tts-1",
   transcription: process.env.AI_CLI_TRANSCRIPTION_MODEL ?? "openai/whisper-1",
+  evaluation: process.env.AI_CLI_EVALUATION_MODEL ?? "typesafe-ai/jev",
 };
 
 const GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1/models";
@@ -51,6 +58,7 @@ export interface ModelPricing {
 }
 
 export interface ModelEntry {
+  [key: string]: unknown;
   id: string;
   name?: string;
   description?: string;
@@ -64,12 +72,14 @@ export interface ModelEntry {
 }
 
 export interface GatewayModels {
+  available: boolean;
   text: ModelEntry[];
   image: ModelEntry[];
   video: ModelEntry[];
   speech: ModelEntry[];
   transcription: ModelEntry[];
-  /** Models with a modality the CLI can generate with. */
+  evaluation: ModelEntry[];
+  /** Models with a modality supported by the CLI. */
   all: ModelEntry[];
   /** Every gateway model, including types the CLI cannot generate with
    * (embedding, realtime, reranking, ...). */
@@ -78,6 +88,7 @@ export interface GatewayModels {
 }
 
 interface RawGatewayModel {
+  [key: string]: unknown;
   id: string;
   name?: string;
   description?: string;
@@ -97,8 +108,11 @@ interface RawGatewayModel {
 let cached: Promise<GatewayModels> | null = null;
 const compatibleCache = new Map<string, Promise<GatewayModels>>();
 
-export function fetchModels(config: ProviderConfig): Promise<GatewayModels> {
-  if (config.mode === "gateway") return fetchGatewayModels();
+export function fetchModels(
+  config: ProviderConfig,
+  gatewayOptions?: { baseURL?: string; headers?: Record<string, string> }
+): Promise<GatewayModels> {
+  if (config.mode === "gateway") return fetchGatewayModels(gatewayOptions);
 
   const cacheKey = `${config.modelsUrl}\0${config.apiKeyEnv}`;
   let request = compatibleCache.get(cacheKey);
@@ -112,7 +126,41 @@ export function fetchModels(config: ProviderConfig): Promise<GatewayModels> {
   return request;
 }
 
-export function fetchGatewayModels(): Promise<GatewayModels> {
+function emptyGatewayModels(): GatewayModels {
+  return {
+    available: false,
+    text: [],
+    image: [],
+    video: [],
+    speech: [],
+    transcription: [],
+    evaluation: [],
+    all: [],
+    lookup: [],
+    languageImageModelIds: new Set(),
+  };
+}
+
+function isRawGatewayModel(value: unknown): value is RawGatewayModel {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return false;
+  const model = value as Record<string, unknown>;
+  return (
+    typeof model.id === "string" &&
+    model.id.length > 0 &&
+    typeof model.type === "string" &&
+    (model.owned_by == null || typeof model.owned_by === "string") &&
+    (model.tags == null ||
+      (Array.isArray(model.tags) &&
+        model.tags.every((tag) => typeof tag === "string")))
+  );
+}
+
+export function fetchGatewayModels(options?: {
+  baseURL?: string;
+  headers?: Record<string, string>;
+}): Promise<GatewayModels> {
+  if (options) return doFetch(options);
   if (!cached) {
     cached = doFetch().catch((err) => {
       cached = null;
@@ -152,16 +200,8 @@ async function fetchOpenAICompatibleModels(
     throw new Error("configured models endpoint returned invalid JSON");
   }
 
-  const result: GatewayModels = {
-    text: [],
-    image: [],
-    video: [],
-    speech: [],
-    transcription: [],
-    all: [],
-    lookup: [],
-    languageImageModelIds: new Set(),
-  };
+  const result = emptyGatewayModels();
+  result.available = true;
   for (const model of json.data ?? []) {
     const advertised = model.capabilities ?? [];
     const capabilities: Modality[] = [];
@@ -195,25 +235,33 @@ async function fetchOpenAICompatibleModels(
   return result;
 }
 
-async function doFetch(): Promise<GatewayModels> {
-  const result: GatewayModels = {
-    text: [],
-    image: [],
-    video: [],
-    speech: [],
-    transcription: [],
-    all: [],
-    lookup: [],
-    languageImageModelIds: new Set(),
-  };
+async function doFetch(options?: {
+  baseURL?: string;
+  headers?: Record<string, string>;
+}): Promise<GatewayModels> {
+  const result = emptyGatewayModels();
 
   try {
-    const res = await fetch(GATEWAY_MODELS_URL, {
-      signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
-    });
+    const res = await fetch(
+      options?.baseURL
+        ? new URL("/v1/models", options.baseURL)
+        : GATEWAY_MODELS_URL,
+      {
+        headers: options?.headers,
+        signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
+      }
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as { data?: RawGatewayModel[] };
-    const models = json.data ?? [];
+    const json: unknown = await res.json();
+    if (
+      json === null ||
+      typeof json !== "object" ||
+      !("data" in json) ||
+      !Array.isArray(json.data) ||
+      !json.data.every(isRawGatewayModel)
+    )
+      throw new Error("Invalid AI Gateway model catalog");
+    const models: RawGatewayModel[] = json.data;
 
     const entryMap = new Map<string, ModelEntry>();
 
@@ -239,6 +287,9 @@ async function doFetch(): Promise<GatewayModels> {
         case "transcription":
           capabilities.push("transcription");
           break;
+        case "evaluation":
+          capabilities.push("evaluation");
+          break;
         default:
           break;
       }
@@ -250,6 +301,7 @@ async function doFetch(): Promise<GatewayModels> {
       const pricing = normalizePricing(m.pricing);
 
       const entry: ModelEntry = {
+        ...m,
         id: m.id,
         name: m.name,
         description: m.description,
@@ -270,6 +322,7 @@ async function doFetch(): Promise<GatewayModels> {
       if (capabilities.includes("speech")) result.speech.push(entry);
       if (capabilities.includes("transcription"))
         result.transcription.push(entry);
+      if (capabilities.includes("evaluation")) result.evaluation.push(entry);
 
       if (m.type === "language" && isImageGen) {
         result.languageImageModelIds.add(m.id);
@@ -278,19 +331,26 @@ async function doFetch(): Promise<GatewayModels> {
 
     result.lookup = [...entryMap.values()];
     result.all = result.lookup.filter((e) => e.capabilities.length > 0);
+    result.available = true;
   } catch {
     cached = null;
     process.stderr.write("Warning: could not fetch models from AI Gateway\n");
+    return emptyGatewayModels();
   }
 
   return result;
 }
 
 export async function fetchModelEndpoints(
-  modelId: string
+  modelId: string,
+  options?: { baseURL?: string; headers?: Record<string, string> }
 ): Promise<ModelEndpointsInfo | null> {
   try {
-    const res = await fetch(`${GATEWAY_MODELS_URL}/${modelId}/endpoints`, {
+    const modelsUrl = options?.baseURL
+      ? new URL("/v1/models", options.baseURL).href
+      : GATEWAY_MODELS_URL;
+    const res = await fetch(`${modelsUrl}/${modelId}/endpoints`, {
+      headers: options?.headers,
       signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

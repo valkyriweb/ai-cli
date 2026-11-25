@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, vi, test } from "vitest";
 
 import {
   resolveModels,
@@ -15,15 +15,17 @@ afterEach(() => {
 });
 
 function mockGateway(models: Record<string, unknown>[]) {
-  globalThis.fetch = mock(() =>
-    Promise.resolve(
-      new Response(JSON.stringify({ data: models }), { status: 200 })
-    )
+  mockGatewayPayload({ data: models });
+}
+
+function mockGatewayPayload(payload: unknown) {
+  globalThis.fetch = vi.fn(() =>
+    Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }))
   ) as unknown as typeof fetch;
 }
 
 function mockGatewayError() {
-  globalThis.fetch = mock(() =>
+  globalThis.fetch = vi.fn(() =>
     Promise.reject(new Error("network error"))
   ) as unknown as typeof fetch;
 }
@@ -35,6 +37,7 @@ describe("resolveModels", () => {
     expect(resolveModels("video")[0]).toContain("/");
     expect(resolveModels("speech")[0]).toContain("/");
     expect(resolveModels("transcription")[0]).toContain("/");
+    expect(resolveModels("evaluation")[0]).toContain("/");
   });
 
   test("returns fully-qualified model as-is", () => {
@@ -117,6 +120,17 @@ describe("resolveModels multi", () => {
 });
 
 describe("fetchGatewayModels", () => {
+  test("evaluation models are discoverable and short names resolve", async () => {
+    mockGateway([
+      { id: "typesafe-ai/jev", type: "evaluation", owned_by: "typesafe-ai" },
+    ]);
+    const models = await fetchGatewayModels();
+    expect(models.evaluation[0].capabilities).toEqual(["evaluation"]);
+    expect(models.all.map((model) => model.id)).toEqual(["typesafe-ai/jev"]);
+    expect(resolveModels("evaluation", "jev", models.evaluation)).toEqual([
+      "typesafe-ai/jev",
+    ]);
+  });
   test("partitions models by type with enriched fields", async () => {
     mockGateway([
       {
@@ -290,7 +304,7 @@ describe("fetchGatewayModels", () => {
   });
 
   test("returns empty lists on non-200 response", async () => {
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response("Not Found", { status: 404 }))
     ) as unknown as typeof fetch;
 
@@ -304,8 +318,35 @@ describe("fetchGatewayModels", () => {
     expect(result.all).toHaveLength(0);
   });
 
+  test.each([
+    ["missing data", {}],
+    ["non-array data", { data: {} }],
+    [
+      "invalid entry after a valid model",
+      {
+        data: [
+          {
+            id: "google/gemini-3-pro-image",
+            type: "language",
+            tags: ["image-generation"],
+          },
+          null,
+        ],
+      },
+    ],
+  ])("rejects malformed 200 catalog with %s", async (_case, payload) => {
+    mockGatewayPayload(payload);
+
+    const result = await fetchGatewayModels();
+
+    expect(result.available).toBe(false);
+    expect(result.lookup).toEqual([]);
+    expect(result.image).toEqual([]);
+    expect(result.languageImageModelIds.size).toBe(0);
+  });
+
   test("caches result across multiple calls", async () => {
-    const fetchMock = mock(() =>
+    const fetchMock = vi.fn(() =>
       Promise.resolve(
         new Response(
           JSON.stringify({
@@ -418,7 +459,7 @@ describe("fetchModelEndpoints", () => {
         },
       ],
     };
-    const fetchMock = mock((_url: string) =>
+    const fetchMock = vi.fn((_url: string) =>
       Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }))
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -435,7 +476,7 @@ describe("fetchModelEndpoints", () => {
   });
 
   test("defaults endpoints to an empty array", async () => {
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(
         new Response(JSON.stringify({ data: { id: "openai/gpt-5" } }), {
           status: 200,
@@ -453,7 +494,7 @@ describe("fetchModelEndpoints", () => {
   });
 
   test("returns null on non-200 response", async () => {
-    globalThis.fetch = mock(() =>
+    globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response("Not Found", { status: 404 }))
     ) as unknown as typeof fetch;
     expect(await fetchModelEndpoints("openai/nope")).toBeNull();

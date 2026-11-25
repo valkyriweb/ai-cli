@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join } from "path";
+
+import { describe, expect, test } from "vitest";
 
 import { buildJobs, runJobs } from "./jobs.js";
 
@@ -42,6 +43,31 @@ async function captureStdout(fn: () => Promise<void>): Promise<Buffer> {
   }
 
   return Buffer.concat(chunks);
+}
+
+async function captureStderr(fn: () => Promise<void>): Promise<string> {
+  const originalWrite = process.stderr.write;
+  let output = "";
+  (
+    process.stderr as {
+      write: (chunk: string | Uint8Array) => boolean;
+    }
+  ).write = (chunk) => {
+    output += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    return true;
+  };
+
+  try {
+    await fn();
+  } finally {
+    (
+      process.stderr as {
+        write: typeof originalWrite;
+      }
+    ).write = originalWrite;
+  }
+
+  return output;
 }
 
 describe("runJobs", () => {
@@ -191,6 +217,81 @@ describe("runJobs", () => {
         "slow-1.txt",
         "fast-2.txt",
       ]);
+    });
+  });
+
+  test("preserves the generated image format when saving a single output", async () => {
+    await withTempCwd(async (dir) => {
+      let savedFile: string | null = null;
+
+      await runJobs(
+        buildJobs(["meta/muse-image-1.0"], 1),
+        async () => ({
+          data: Buffer.from([1, 2, 3]),
+          id: "image_123",
+          mediaType: "image/webp",
+        }),
+        {
+          noun: "image",
+          format: "image",
+          outputPath: dir,
+          quiet: true,
+          concurrency: 1,
+          afterOutputs: (outputs) => {
+            savedFile = outputs[0]?.file ?? null;
+          },
+        }
+      );
+
+      expect(savedFile).not.toBeNull();
+      expect(basename(savedFile!)).toBe("image_123.webp");
+    });
+  });
+
+  test("previews string image outputs from multi-run jobs", async () => {
+    await withTempCwd(async (dir) => {
+      const originalPreview = process.env.AI_CLI_PREVIEW;
+      const isTTYDescriptor = Object.getOwnPropertyDescriptor(
+        process.stdout,
+        "isTTY"
+      );
+      process.env.AI_CLI_PREVIEW = "1";
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+
+      try {
+        const stderr = await captureStderr(async () => {
+          await runJobs(
+            buildJobs(["quiverai/arrow-2"], 2),
+            async () => ({
+              data: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8"><rect width="16" height="8" /></svg>',
+              mediaType: "image/svg+xml",
+            }),
+            {
+              noun: "image",
+              format: "image",
+              outputPath: dir,
+              quiet: true,
+              concurrency: 1,
+            }
+          );
+        });
+
+        expect(stderr.split("\x1b_Ga=T,f=100,m=")).toHaveLength(3);
+      } finally {
+        if (originalPreview === undefined) {
+          delete process.env.AI_CLI_PREVIEW;
+        } else {
+          process.env.AI_CLI_PREVIEW = originalPreview;
+        }
+        if (isTTYDescriptor) {
+          Object.defineProperty(process.stdout, "isTTY", isTTYDescriptor);
+        } else {
+          delete (process.stdout as { isTTY?: boolean }).isTTY;
+        }
+      }
     });
   });
 });

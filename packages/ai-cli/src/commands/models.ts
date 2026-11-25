@@ -10,6 +10,11 @@ import {
   formatWebSearchPrice,
 } from "../lib/format.js";
 import {
+  addGatewayConnectionOptions,
+  mediaSettings,
+  type MediaOptions,
+} from "../lib/media-options.js";
+import {
   expandModelId,
   fetchModels,
   fetchModelEndpoints,
@@ -49,9 +54,10 @@ function pricingString(pricing: ModelEntry["pricing"], key: string) {
 async function showModelInfo(
   input: string,
   json: boolean,
-  provider: ProviderConfig
+  provider: ProviderConfig,
+  options: Awaited<ReturnType<typeof mediaSettings>>["catalogOptions"]
 ): Promise<void> {
-  const gatewayModels = await fetchModels(provider);
+  const gatewayModels = await fetchModels(provider, options);
   const id = expandModelId(input, gatewayModels.lookup);
   const entry = gatewayModels.lookup.find((m) => m.id === id);
   if (!entry) {
@@ -62,10 +68,13 @@ async function showModelInfo(
   }
 
   const endpointsInfo =
-    provider.mode === "gateway" ? await fetchModelEndpoints(entry.id) : null;
+    provider.mode === "gateway"
+      ? await fetchModelEndpoints(entry.id, options)
+      : null;
 
   if (json) {
     const output = {
+      ...entry,
       id: entry.id,
       ...(entry.name ? { name: entry.name } : {}),
       ...(entry.description ? { description: entry.description } : {}),
@@ -162,30 +171,31 @@ async function showModelInfo(
 }
 
 export function registerModelsCommand(program: Command) {
-  addProviderOptions(
-    program
-      .command("models")
-      .description("List available models from the configured provider")
-      .argument(
-        "[model]",
-        "Show detailed info for a model (e.g. anthropic/claude-opus-4.6)"
-      )
-      .option(
-        "--type <type>",
-        "Filter by type: text, image, video, audio, speech, transcription"
-      )
-      .option("--creator <name>", "Filter by creator (e.g. openai, google)")
-      .option("--json", "Output as JSON (includes descriptions)")
-  ).action(
+  const command = program
+    .command("models")
+    .description("List available models from AI Gateway or a custom provider")
+    .argument(
+      "[model]",
+      "Show detailed info for a model (e.g. anthropic/claude-opus-4.6)"
+    )
+    .option(
+      "--type <type>",
+      "Filter by type: text, image, video, audio, speech, transcription, evaluation"
+    )
+    .option("--creator <name>", "Filter by creator (e.g. openai, google)")
+    .option("--json", "Output as JSON (includes native Gateway capabilities)");
+  addProviderOptions(addGatewayConnectionOptions(command)).action(
     async (
       model: string | undefined,
-      opts: {
-        type?: string;
-        creator?: string;
-        json?: boolean;
-      } & ProviderOptions
+      opts: Partial<MediaOptions> &
+        ProviderOptions & {
+          type?: string;
+          creator?: string;
+          json?: boolean;
+        }
     ) => {
       const provider = resolveProviderConfig(opts);
+      const { catalogOptions } = await mediaSettings(opts);
       if (model) {
         if (opts.type || opts.creator) {
           process.stderr.write(
@@ -193,7 +203,12 @@ export function registerModelsCommand(program: Command) {
           );
           process.exit(1);
         }
-        await showModelInfo(model, opts.json ?? false, provider);
+        await showModelInfo(
+          model,
+          opts.json ?? false,
+          provider,
+          catalogOptions
+        );
         return;
       }
       const validTypes = [
@@ -203,6 +218,7 @@ export function registerModelsCommand(program: Command) {
         "audio",
         "speech",
         "transcription",
+        "evaluation",
       ];
       const filterType = opts.type?.toLowerCase() as ModelFilter | undefined;
       if (filterType && !validTypes.includes(filterType)) {
@@ -213,7 +229,7 @@ export function registerModelsCommand(program: Command) {
       }
       const filterCreator = opts.creator?.toLowerCase();
 
-      const gatewayModels = await fetchModels(provider);
+      const gatewayModels = await fetchModels(provider, catalogOptions);
 
       if (opts.json) {
         let entries = gatewayModels.all;
@@ -231,6 +247,7 @@ export function registerModelsCommand(program: Command) {
           );
         }
         const output = entries.map((m) => ({
+          ...m,
           id: m.id,
           ...(m.name ? { name: m.name } : {}),
           ...(m.description ? { description: m.description } : {}),
@@ -249,6 +266,11 @@ export function registerModelsCommand(program: Command) {
         sections.push({ title: "Image", entries: gatewayModels.image });
       if (!filterType || filterType === "video")
         sections.push({ title: "Video", entries: gatewayModels.video });
+      if (!filterType || filterType === "evaluation")
+        sections.push({
+          title: "Evaluation",
+          entries: gatewayModels.evaluation,
+        });
       if (!filterType || filterType === "audio" || filterType === "speech")
         sections.push({ title: "Speech", entries: gatewayModels.speech });
       if (

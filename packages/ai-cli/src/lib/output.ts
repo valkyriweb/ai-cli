@@ -25,6 +25,7 @@ export interface WriteOutputOptions {
   outputId?: string;
   suffix?: string;
   extension?: string;
+  mediaType?: string;
   forceFile?: boolean;
   quiet?: boolean;
   display?: boolean;
@@ -33,10 +34,37 @@ export interface WriteOutputOptions {
 function defaultFilename(
   format: OutputFormat,
   outputId?: string,
-  extension?: string
+  extension?: string,
+  mediaType?: string
 ): string {
-  return `${filenameStem(outputId)}${extension ?? DEFAULT_EXTENSIONS[format]}`;
+  return `${filenameStem(outputId)}${
+    extension ?? defaultExtension(format, mediaType)
+  }`;
 }
+
+function defaultExtension(format: OutputFormat, mediaType?: string): string {
+  if (!mediaType) return DEFAULT_EXTENSIONS[format];
+
+  const extension = MEDIA_EXTENSIONS[mediaType.toLowerCase().split(";", 1)[0]!];
+  return extension ?? DEFAULT_EXTENSIONS[format];
+}
+
+const MEDIA_EXTENSIONS: Record<string, string> = {
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "video/ogg": ".ogv",
+  "image/avif": ".avif",
+  "image/bmp": ".bmp",
+  "image/gif": ".gif",
+  "image/heic": ".heic",
+  "image/jpg": ".jpg",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/svg+xml": ".svg",
+  "image/tiff": ".tiff",
+  "image/webp": ".webp",
+};
 
 function filenameStem(outputId?: string): string {
   return sanitizeFilenameStem(outputId) ?? randomBytes(4).toString("hex");
@@ -53,6 +81,7 @@ function sanitizeFilenameStem(outputId?: string): string | undefined {
 }
 
 function isDirectory(p: string): boolean {
+  if (p.endsWith("/") || p.endsWith("\\")) return true;
   try {
     return statSync(p).isDirectory();
   } catch {
@@ -69,6 +98,7 @@ export async function writeOutput(
     outputId,
     suffix,
     extension,
+    mediaType,
     forceFile,
     quiet,
     display,
@@ -89,7 +119,10 @@ export async function writeOutput(
     if (isDirectory(effectiveOutput)) {
       filePath = join(
         effectiveOutput,
-        addSuffix(defaultFilename(format, outputId, extension), suffix)
+        addSuffix(
+          defaultFilename(format, outputId, extension, mediaType),
+          suffix
+        )
       );
     } else {
       filePath = addSuffix(effectiveOutput, suffix);
@@ -108,7 +141,7 @@ export async function writeOutput(
   }
 
   const filename = addSuffix(
-    defaultFilename(format, outputId, extension),
+    defaultFilename(format, outputId, extension, mediaType),
     suffix
   );
   const path = resolve(filename);
@@ -127,7 +160,7 @@ async function showPreview(
   if (format === "video") {
     await displayVideoFrame(preview);
   } else {
-    displayImage(preview);
+    await displayImage(preview);
   }
 }
 

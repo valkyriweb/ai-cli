@@ -44,10 +44,15 @@ Do not continue if any required custom-provider setting is absent; an Agent Skil
 ai text "summarize this" -m provider/model -o result.md --json
 ai image "a sunset" -o result.png --json
 ai video "a spinning triangle" -o result.mp4 --json
+ai video start "a spinning triangle" -o operation.json
+ai video status operation.json --download -o ./clips/
 ai audio speak "hello" -o speech.mp3 --json --no-play --no-waveform
 ai audio transcribe recording.mp3 -o transcript.txt --json
 ai models --type text --json
+ai decide "Is this a cat?" --images photo.jpg --json
 ```
+
+Gateway connection flags (`--base-url`, `--scope`, `--headers`) and the key saved by `ai login` apply in the default Gateway mode. In custom modes `--base-url` names the custom API base URL instead.
 
 ## Context and output safety
 
